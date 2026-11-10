@@ -125,24 +125,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentStudentId, setCurrentStudentId] = useState<string>('s1');
 
   const [authSession, setAuthSession] = useState<AuthSession | null>(() => {
-    const saved = localStorage.getItem('gm_session');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        return { role: 'teacher' };
-      }
-    }
-    return { role: 'teacher' };
+    localStorage.removeItem('gm_session');
+    return null;
   });
-
-  useEffect(() => {
-    if (authSession) {
-      localStorage.setItem('gm_session', JSON.stringify(authSession));
-    } else {
-      localStorage.removeItem('gm_session');
-    }
-  }, [authSession]);
 
   const loginAsTeacher = (inputPin: string): boolean => {
     const validPin = teacher.pin || '1234';

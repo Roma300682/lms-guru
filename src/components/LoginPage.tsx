@@ -16,10 +16,14 @@ export const LoginPage: React.FC = () => {
   const [teacherError, setTeacherError] = useState('');
 
   // Student login state
-  const [selectedClassId, setSelectedClassId] = useState<string>(classes[0]?.id || 'c1');
+  const [selectedClassId, setSelectedClassId] = useState<string>(classes[0]?.id || '');
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
 
-  const classStudents = students.filter((s) => s.classId === selectedClassId);
+  const effectiveClassId = classes.some((c) => c.id === selectedClassId)
+    ? selectedClassId
+    : classes[0]?.id || '';
+
+  const classStudents = students.filter((s) => s.classId === effectiveClassId);
 
   // Set default student when class changes
   const handleClassChange = (newClassId: string) => {
@@ -171,7 +175,7 @@ export const LoginPage: React.FC = () => {
                   Pilih Kelas Anda
                 </label>
                 <select
-                  value={selectedClassId}
+                  value={effectiveClassId}
                   onChange={(e) => handleClassChange(e.target.value)}
                   className="w-full text-xs font-medium px-3 py-2.5 border border-slate-300 rounded-xl bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
                 >
@@ -185,7 +189,7 @@ export const LoginPage: React.FC = () => {
 
               {classStudents.length === 0 ? (
                 <div className="text-xs text-amber-700 bg-amber-50 p-3 rounded-xl border border-amber-200">
-                  Belum ada siswa terdaftar di {classes.find((c) => c.id === selectedClassId)?.name || 'kelas ini'}. Guru dapat mengunggah daftar siswa melalui Panel Guru & Admin.
+                  Belum ada siswa terdaftar di {classes.find((c) => c.id === effectiveClassId)?.name || 'kelas ini'}. Guru dapat mengunggah daftar siswa melalui Panel Guru & Admin.
                 </div>
               ) : (
                 <div>
