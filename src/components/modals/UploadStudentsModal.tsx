@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLMS } from '../../context/LMSContext';
 import { X, Upload, FileText, Check, AlertCircle, Users } from 'lucide-react';
 
@@ -6,21 +6,39 @@ interface UploadStudentsModalProps {
   isOpen: boolean;
   onClose: () => void;
   defaultClassId?: string;
+  onSuccess?: (count: number, className: string) => void;
 }
 
 export const UploadStudentsModal: React.FC<UploadStudentsModalProps> = ({
   isOpen,
   onClose,
   defaultClassId,
+  onSuccess,
 }) => {
-  const { classes, addStudentsBatch } = useLMS();
+  const { classes, addStudentsBatch, setActiveClassId } = useLMS();
 
-  const [targetClassId, setTargetClassId] = useState<string>(
-    defaultClassId && defaultClassId !== 'all' ? defaultClassId : classes[0]?.id || 'c1'
-  );
+  const [targetClassId, setTargetClassId] = useState<string>(() => {
+    if (defaultClassId && defaultClassId !== 'all' && classes.some((c) => c.id === defaultClassId)) {
+      return defaultClassId;
+    }
+    return classes[0]?.id || '';
+  });
   const [inputText, setInputText] = useState('');
   const [parsedNames, setParsedNames] = useState<string[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
+
+  // Synchronize targetClassId whenever modal opens or classes change
+  useEffect(() => {
+    if (isOpen) {
+      if (defaultClassId && defaultClassId !== 'all' && classes.some((c) => c.id === defaultClassId)) {
+        setTargetClassId(defaultClassId);
+      } else if (classes.length > 0) {
+        setTargetClassId((prev) => (classes.some((c) => c.id === prev) ? prev : classes[0].id));
+      } else {
+        setTargetClassId('');
+      }
+    }
+  }, [isOpen, defaultClassId, classes]);
 
   if (!isOpen) return null;
 
@@ -33,35 +51,51 @@ export const UploadStudentsModal: React.FC<UploadStudentsModalProps> = ({
       let trimmed = line.trim();
       if (!trimmed) return;
 
-      // If CSV format (comma separated), take first column if it's text
+      // If tab separated (from Excel copy-paste columns)
+      if (trimmed.includes('\t')) {
+        const parts = trimmed.split('\t').map((p) => p.trim()).filter(Boolean);
+        const namePart = parts.find((p) => !/^\d+$/.test(p) && p.length > 1);
+        if (namePart) {
+          trimmed = namePart;
+        }
+      }
+
+      // If CSV format (comma separated), take name column
       if (trimmed.includes(',')) {
         const parts = trimmed.split(',');
-        // Check if first column is a number (like No), take second
-        if (/^\d+$/.test(parts[0].trim()) && parts[1]) {
-          trimmed = parts[1].trim();
-        } else {
-          trimmed = parts[0].trim();
+        const namePart = parts.find((p) => !/^\d+$/.test(p.trim()) && p.trim().length > 1);
+        if (namePart) {
+          trimmed = namePart.trim();
         }
       }
 
       // If semicolon separated
       if (trimmed.includes(';')) {
         const parts = trimmed.split(';');
-        if (/^\d+$/.test(parts[0].trim()) && parts[1]) {
-          trimmed = parts[1].trim();
-        } else {
-          trimmed = parts[0].trim();
+        const namePart = parts.find((p) => !/^\d+$/.test(p.trim()) && p.trim().length > 1);
+        if (namePart) {
+          trimmed = namePart.trim();
         }
       }
 
-      // Strip leading numbering: "1. ", "01. ", "1) ", "1 - "
-      trimmed = trimmed.replace(/^(\d+[\.\)\-]\s*)/, '');
+      // Strip leading numbering: "1. ", "01. ", "1) ", "1 - ", "1 "
+      trimmed = trimmed.replace(/^(\d+[\.\)\-\t\s]+)/, '');
       // Strip surrounding quotes
       trimmed = trimmed.replace(/^["']|["']$/g, '').trim();
 
       // Ignore common table header names
       const lower = trimmed.toLowerCase();
-      if (lower === 'nama' || lower === 'nama siswa' || lower === 'name' || lower === 'no') {
+      if (
+        lower === 'nama' ||
+        lower === 'nama siswa' ||
+        lower === 'nama lengkap' ||
+        lower === 'student name' ||
+        lower === 'name' ||
+        lower === 'no' ||
+        lower === 'nomor' ||
+        lower === 'nis' ||
+        lower === 'nisn'
+      ) {
         return;
       }
 
@@ -98,21 +132,29 @@ export const UploadStudentsModal: React.FC<UploadStudentsModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (parsedNames.length === 0 || !targetClassId) return;
+    const finalClassId = targetClassId || classes[0]?.id;
+    if (parsedNames.length === 0 || !finalClassId) return;
 
     const toImport = parsedNames.map((name) => ({
       name,
-      classId: targetClassId,
+      classId: finalClassId,
     }));
 
     addStudentsBatch(toImport);
+    setActiveClassId(finalClassId); // Instantly switch view to the target class!
+
+    const targetClassObj = classes.find((c) => c.id === finalClassId);
+    if (onSuccess && targetClassObj) {
+      onSuccess(toImport.length, targetClassObj.name);
+    }
+
     onClose();
     setInputText('');
     setParsedNames([]);
     setFileName(null);
   };
 
-  const selectedClass = classes.find((c) => c.id === targetClassId);
+  const selectedClass = classes.find((c) => c.id === (targetClassId || classes[0]?.id));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
@@ -140,19 +182,32 @@ export const UploadStudentsModal: React.FC<UploadStudentsModalProps> = ({
           </button>
         </div>
 
-        {/* Modal Body */}
-        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
-          <div className="p-6 space-y-4 overflow-y-auto flex-1">
-            {/* Target Class Selection */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Pilih Kelas Tujuan
-              </label>
-              <select
-                value={targetClassId}
-                onChange={(e) => setTargetClassId(e.target.value)}
-                className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-              >
+        {classes.length === 0 ? (
+          <div className="p-6 text-center space-y-4">
+            <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-xl">
+              Belum ada rombel kelas yang terdaftar. Tambahkan kelas terlebih dahulu di <strong>Panel Guru & Admin</strong> sebelum mengimpor siswa.
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 rounded-lg hover:bg-slate-800"
+            >
+              Tutup
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+              {/* Target Class Selection */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Pilih Kelas Tujuan
+                </label>
+                <select
+                  value={targetClassId || classes[0]?.id || ''}
+                  onChange={(e) => setTargetClassId(e.target.value)}
+                  className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                >
                 {classes.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
@@ -248,7 +303,8 @@ export const UploadStudentsModal: React.FC<UploadStudentsModalProps> = ({
             </div>
           </div>
         </form>
-      </div>
+      )}
     </div>
-  );
+  </div>
+);
 };

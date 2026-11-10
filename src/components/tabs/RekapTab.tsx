@@ -8,20 +8,21 @@ export const RekapTab: React.FC = () => {
 
   const [subTab, setSubTab] = useState<'nilai' | 'presensi'>('nilai');
   const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
+  const [selectedLocalClassId, setSelectedLocalClassId] = useState<string>(classes[0]?.id || '');
 
   // Selected class
-  const currentClass = classes.find((c) => c.id === activeClassId) || classes[0];
-  const targetClassId = activeClassId === 'all' ? classes[0]?.id || 'c1' : activeClassId;
-  const targetClassName = activeClassId === 'all' ? currentClass?.name || 'Kelas' : currentClass?.name;
+  const targetClassId = activeClassId === 'all' ? (selectedLocalClassId || classes[0]?.id || '') : activeClassId;
+  const currentClass = classes.find((c) => c.id === targetClassId) || classes[0];
+  const targetClassName = currentClass?.name || 'Kelas';
 
   // Filter students
-  const classStudents = students.filter((s) => s.classId === targetClassId);
+  const classStudents = targetClassId ? students.filter((s) => s.classId === targetClassId) : [];
 
   // Filter tasks for this class
-  const classTasks = tasks.filter((t) => t.classId === 'all' || t.classId === targetClassId);
+  const classTasks = tasks.filter((t) => t.classId === 'all' || (targetClassId && t.classId === targetClassId));
 
   // Filter attendance for this class
-  const classAttendance = attendance.filter((a) => a.classId === targetClassId);
+  const classAttendance = targetClassId ? attendance.filter((a) => a.classId === targetClassId) : [];
 
   // Export to CSV
   const handleExportCSV = () => {
@@ -87,9 +88,29 @@ export const RekapTab: React.FC = () => {
             </button>
           </div>
 
-          <span className="text-xs text-slate-500 hidden sm:inline">
-            Menampilkan data <strong>{targetClassName}</strong>
-          </span>
+          {activeClassId === 'all' && classes.length > 1 ? (
+            <div className="flex items-center gap-1.5 text-xs text-slate-600">
+              <span className="hidden sm:inline">Pilih Rombel:</span>
+              <select
+                value={selectedLocalClassId || classes[0]?.id || ''}
+                onChange={(e) => setSelectedLocalClassId(e.target.value)}
+                className="text-xs px-2 py-1 border border-slate-300 rounded-lg bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500 font-medium"
+              >
+                {classes.map((c) => {
+                  const cnt = students.filter((s) => s.classId === c.id).length;
+                  return (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({cnt} siswa)
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          ) : (
+            <span className="text-xs text-slate-500 hidden sm:inline">
+              Menampilkan data <strong>{targetClassName}</strong> ({classStudents.length} siswa)
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2">

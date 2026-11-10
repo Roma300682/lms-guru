@@ -186,6 +186,24 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('gm_students', JSON.stringify(students));
   }, [students]);
 
+  // Self-heal: ensure all students belong to an existing class
+  useEffect(() => {
+    if (classes.length > 0) {
+      const validClassIds = new Set(classes.map((c) => c.id));
+      setStudents((prev) => {
+        let changed = false;
+        const updated = prev.map((s) => {
+          if (!validClassIds.has(s.classId)) {
+            changed = true;
+            return { ...s, classId: classes[0].id };
+          }
+          return s;
+        });
+        return changed ? updated : prev;
+      });
+    }
+  }, [classes]);
+
   useEffect(() => {
     localStorage.setItem('gm_materials', JSON.stringify(materials));
   }, [materials]);
@@ -249,13 +267,19 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addStudentsBatch = (newStudents: { name: string; classId: string }[]) => {
+    const validClassIds = new Set(classes.map((c) => c.id));
+    const fallbackClassId = classes[0]?.id || 'c1';
+
     const toAdd: Student[] = newStudents
       .filter((s) => s.name && s.name.trim().length > 0)
-      .map((s, idx) => ({
-        id: 's_' + (Date.now() + idx),
-        name: s.name.trim(),
-        classId: s.classId,
-      }));
+      .map((s, idx) => {
+        const assignedClassId = validClassIds.has(s.classId) ? s.classId : fallbackClassId;
+        return {
+          id: 's_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).substring(2, 7),
+          name: s.name.trim(),
+          classId: assignedClassId,
+        };
+      });
     if (toAdd.length === 0) return;
     setStudents((prev) => [...prev, ...toAdd]);
   };

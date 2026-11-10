@@ -3,8 +3,8 @@ import { useLMS } from '../context/LMSContext';
 import { GraduationCap, UserCheck, BookOpen, LogOut, RotateCcw, Cloud, ShieldCheck } from 'lucide-react';
 
 interface HeaderProps {
-  activeTab: 'materi' | 'tugas' | 'rekap';
-  setActiveTab: (tab: 'materi' | 'tugas' | 'rekap') => void;
+  activeTab: 'materi' | 'tugas' | 'siswa' | 'rekap';
+  setActiveTab: (tab: 'materi' | 'tugas' | 'siswa' | 'rekap') => void;
   onOpenProfile: () => void;
   onOpenDeployGuide?: () => void;
 }
@@ -37,7 +37,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
           <nav className="flex items-center gap-1 sm:gap-2">
             <button
               onClick={() => setActiveTab('materi')}
-              className={`px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 ${
+              className={`px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 ${
                 activeTab === 'materi'
                   ? 'bg-slate-100 text-slate-900 font-semibold'
                   : 'text-slate-600 hover:text-slate-900'
@@ -47,7 +47,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
             </button>
             <button
               onClick={() => setActiveTab('tugas')}
-              className={`px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 ${
+              className={`px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 ${
                 activeTab === 'tugas'
                   ? 'bg-slate-100 text-slate-900 font-semibold'
                   : 'text-slate-600 hover:text-slate-900'
@@ -56,8 +56,18 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
               Tugas & Nilai
             </button>
             <button
+              onClick={() => setActiveTab('siswa')}
+              className={`px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 ${
+                activeTab === 'siswa'
+                  ? 'bg-slate-100 text-slate-900 font-semibold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Daftar Siswa
+            </button>
+            <button
               onClick={() => setActiveTab('rekap')}
-              className={`px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 ${
+              className={`px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 ${
                 activeTab === 'rekap'
                   ? 'bg-slate-100 text-slate-900 font-semibold'
                   : 'text-slate-600 hover:text-slate-900'

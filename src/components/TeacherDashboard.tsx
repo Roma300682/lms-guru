@@ -2,16 +2,22 @@ import React, { useState } from 'react';
 import { useLMS } from '../context/LMSContext';
 import { MateriTab } from './tabs/MateriTab';
 import { TugasTab } from './tabs/TugasTab';
+import { SiswaTab } from './tabs/SiswaTab';
 import { RekapTab } from './tabs/RekapTab';
 import { Users, Settings, BookOpen, Upload, Shield } from 'lucide-react';
 import { UploadStudentsModal } from './modals/UploadStudentsModal';
 
 interface TeacherDashboardProps {
-  activeTab: 'materi' | 'tugas' | 'rekap';
+  activeTab: 'materi' | 'tugas' | 'siswa' | 'rekap';
   onOpenProfile: () => void;
+  onNavigateTab?: (tab: 'materi' | 'tugas' | 'siswa' | 'rekap') => void;
 }
 
-export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ activeTab, onOpenProfile }) => {
+export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
+  activeTab,
+  onOpenProfile,
+  onNavigateTab,
+}) => {
   const { teacher, classes, students, activeClassId, setActiveClassId } = useLMS();
   const [isUploadOpen, setIsUploadOpen] = useState(false);
 
@@ -108,6 +114,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ activeTab, o
       <main>
         {activeTab === 'materi' && <MateriTab />}
         {activeTab === 'tugas' && <TugasTab />}
+        {activeTab === 'siswa' && <SiswaTab />}
         {activeTab === 'rekap' && <RekapTab />}
       </main>
 
@@ -115,6 +122,11 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ activeTab, o
         isOpen={isUploadOpen}
         onClose={() => setIsUploadOpen(false)}
         defaultClassId={activeClassId}
+        onSuccess={() => {
+          if (onNavigateTab) {
+            onNavigateTab('siswa');
+          }
+        }}
       />
     </div>
   );
