@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLMS } from '../context/LMSContext';
-import { GraduationCap, UserCheck, BookOpen, LogOut, RotateCcw, Cloud } from 'lucide-react';
+import { GraduationCap, UserCheck, BookOpen, LogOut, RotateCcw, Cloud, ShieldCheck } from 'lucide-react';
 
 interface HeaderProps {
   activeTab: 'materi' | 'tugas' | 'rekap';
@@ -82,11 +82,14 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
             <>
               <button
                 onClick={onOpenProfile}
-                className="hidden md:flex items-center gap-1 px-3 py-1.5 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg border border-slate-200 transition-colors"
-                title="Atur Guru & Mapel"
+                className="hidden md:flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-700 hover:text-slate-900 hover:bg-slate-50 rounded-lg border border-slate-200 transition-colors"
+                title="Panel Pengaturan Guru & Administrator"
               >
-                <BookOpen className="w-3.5 h-3.5 text-slate-500" />
-                <span className="truncate max-w-[120px]">{teacher.name}</span>
+                <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
+                <span className="truncate max-w-[130px] font-medium">{teacher.name}</span>
+                <span className="text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-semibold uppercase">
+                  Admin
+                </span>
               </button>
 
               <button

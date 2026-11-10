@@ -31,7 +31,7 @@ export const LoginPage: React.FC = () => {
     setTeacherError('');
     const success = loginAsTeacher(pin);
     if (!success) {
-      setTeacherError('PIN salah. Gunakan PIN: 1234');
+      setTeacherError('PIN salah. Silakan periksa kembali PIN Anda.');
     }
   };
 
@@ -53,7 +53,7 @@ export const LoginPage: React.FC = () => {
           GuruMapel LMS
         </h1>
         <p className="text-xs text-slate-500 mt-1">
-          LMS Mandiri Mata Pelajaran {teacher.subject}
+          LMS Mandiri & Panel Admin Mata Pelajaran {teacher.subject}
         </p>
       </div>
 
@@ -74,7 +74,7 @@ export const LoginPage: React.FC = () => {
             }`}
           >
             <GraduationCap className="w-4 h-4 text-indigo-600" />
-            <span>Masuk Guru</span>
+            <span>Guru & Admin</span>
           </button>
 
           <button
@@ -101,14 +101,14 @@ export const LoginPage: React.FC = () => {
           {role === 'teacher' ? (
             <form onSubmit={handleTeacherSubmit} className="space-y-4">
               <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 text-xs">
-                <span className="text-slate-500 block">Guru Pengampu:</span>
+                <span className="text-slate-500 block">Guru & Administrator Mapel:</span>
                 <span className="font-semibold text-slate-900 text-sm">{teacher.name}</span>
-                <span className="text-indigo-600 block text-xs mt-0.5">Mapel: {teacher.subject}</span>
+                <span className="text-indigo-600 block text-xs mt-0.5">Mata Pelajaran: {teacher.subject}</span>
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Masukkan PIN Guru
+                  Masukkan PIN Guru / Admin
                 </label>
                 <div className="relative">
                   <input
@@ -119,20 +119,16 @@ export const LoginPage: React.FC = () => {
                       setPin(e.target.value);
                       setTeacherError('');
                     }}
-                    placeholder="Masukkan PIN (Default: 1234)"
+                    placeholder="Masukkan PIN keamanan"
                     className="w-full text-sm px-3.5 py-2.5 pl-9 border border-slate-300 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500 font-mono"
                     autoFocus
                   />
                   <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                 </div>
-                {teacherError ? (
+                {teacherError && (
                   <p className="text-xs text-rose-600 mt-1.5 flex items-center gap-1">
                     <AlertCircle className="w-3.5 h-3.5" />
                     <span>{teacherError}</span>
-                  </p>
-                ) : (
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    PIN bawaan standar: <strong>1234</strong>
                   </p>
                 )}
               </div>
@@ -141,22 +137,9 @@ export const LoginPage: React.FC = () => {
                 type="submit"
                 className="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors shadow-xs"
               >
-                <span>Masuk ke Ruang Guru</span>
+                <span>Masuk ke Ruang Guru & Admin</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
-
-              <div className="pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPin('1234');
-                    loginAsTeacher('1234');
-                  }}
-                  className="w-full py-2 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors"
-                >
-                  ⚡ Masuk Cepat Demo (PIN: 1234)
-                </button>
-              </div>
             </form>
           ) : (
             <form onSubmit={handleStudentSubmit} className="space-y-4">

@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useLMS } from '../context/LMSContext';
 import { MateriTab } from './tabs/MateriTab';
 import { TugasTab } from './tabs/TugasTab';
 import { RekapTab } from './tabs/RekapTab';
-import { Users, Settings, BookOpen } from 'lucide-react';
+import { Users, Settings, BookOpen, Upload, Shield } from 'lucide-react';
+import { UploadStudentsModal } from './modals/UploadStudentsModal';
 
 interface TeacherDashboardProps {
   activeTab: 'materi' | 'tugas' | 'rekap';
@@ -12,6 +13,7 @@ interface TeacherDashboardProps {
 
 export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ activeTab, onOpenProfile }) => {
   const { teacher, classes, students, activeClassId, setActiveClassId } = useLMS();
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
 
   return (
     <div className="space-y-5">
@@ -75,9 +77,18 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ activeTab, o
           })}
 
           <button
+            onClick={() => setIsUploadOpen(true)}
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-md transition-colors ml-1"
+            title="Upload Data Siswa Massal (CSV/Excel)"
+          >
+            <Upload className="w-3 h-3" />
+            <span>Upload Siswa</span>
+          </button>
+
+          <button
             onClick={onOpenProfile}
-            className="p-1 text-slate-400 hover:text-slate-700 rounded-md hover:bg-slate-200 transition-colors ml-1"
-            title="Kelola Daftar Kelas & Siswa"
+            className="p-1 text-slate-400 hover:text-slate-700 rounded-md hover:bg-slate-200 transition-colors"
+            title="Panel Pengaturan Guru & Admin"
           >
             <Settings className="w-3.5 h-3.5" />
           </button>
@@ -90,6 +101,12 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ activeTab, o
         {activeTab === 'tugas' && <TugasTab />}
         {activeTab === 'rekap' && <RekapTab />}
       </main>
+
+      <UploadStudentsModal
+        isOpen={isUploadOpen}
+        onClose={() => setIsUploadOpen(false)}
+        defaultClassId={activeClassId}
+      />
     </div>
   );
 };

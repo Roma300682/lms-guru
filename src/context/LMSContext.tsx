@@ -48,7 +48,12 @@ interface LMSContextType {
   addClass: (name: string) => void;
   deleteClass: (id: string) => void;
   addStudent: (name: string, classId: string) => void;
+  addStudentsBatch: (newStudents: { name: string; classId: string }[]) => void;
   deleteStudent: (id: string) => void;
+
+  // Admin Backup & Restore
+  exportBackup: () => void;
+  importBackup: (jsonContent: string) => boolean;
 
   // Material Actions
   addMaterial: (material: Omit<Material, 'id' | 'date'>) => void;
@@ -141,7 +146,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const loginAsTeacher = (inputPin: string): boolean => {
     const validPin = teacher.pin || '1234';
-    if (inputPin.trim() === validPin || inputPin.trim() === '1234') {
+    if (inputPin.trim() === validPin) {
       setAuthSession({ role: 'teacher' });
       setViewMode('teacher');
       return true;
@@ -224,6 +229,57 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteStudent = (id: string) => {
     setStudents((prev) => prev.filter((s) => s.id !== id));
     setSubmissions((prev) => prev.filter((sub) => sub.studentId !== id));
+  };
+
+  const addStudentsBatch = (newStudents: { name: string; classId: string }[]) => {
+    const toAdd: Student[] = newStudents
+      .filter((s) => s.name && s.name.trim().length > 0)
+      .map((s, idx) => ({
+        id: 's_' + (Date.now() + idx),
+        name: s.name.trim(),
+        classId: s.classId,
+      }));
+    if (toAdd.length === 0) return;
+    setStudents((prev) => [...prev, ...toAdd]);
+  };
+
+  const exportBackup = () => {
+    const data = {
+      teacher,
+      classes,
+      students,
+      materials,
+      tasks,
+      submissions,
+      attendance,
+      exportDate: new Date().toISOString(),
+      version: '1.0',
+    };
+    const jsonStr = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Backup_LMS_${teacher.subject.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importBackup = (jsonContent: string): boolean => {
+    try {
+      const data = JSON.parse(jsonContent);
+      if (!data.classes || !data.students) return false;
+      if (data.teacher) setTeacher(data.teacher);
+      if (Array.isArray(data.classes)) setClasses(data.classes);
+      if (Array.isArray(data.students)) setStudents(data.students);
+      if (Array.isArray(data.materials)) setMaterials(data.materials);
+      if (Array.isArray(data.tasks)) setTasks(data.tasks);
+      if (Array.isArray(data.submissions)) setSubmissions(data.submissions);
+      if (Array.isArray(data.attendance)) setAttendance(data.attendance);
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   const addMaterial = (item: Omit<Material, 'id' | 'date'>) => {
@@ -354,7 +410,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addClass,
         deleteClass,
         addStudent,
+        addStudentsBatch,
         deleteStudent,
+        exportBackup,
+        importBackup,
         addMaterial,
         deleteMaterial,
         addTask,

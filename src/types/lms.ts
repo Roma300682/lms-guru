@@ -52,7 +52,9 @@ export interface AttendanceRecord {
 export interface TeacherProfile {
   name: string;
   subject: string; // Mata pelajaran (misal: "Biologi")
-  pin: string; // PIN masuk guru (default "1234")
+  pin: string; // PIN masuk guru / admin (default "1234")
+  nip?: string; // NIP Guru (opsional)
+  kktp?: number; // Kriteria Ketuntasan Minimal / KKTP (default 75)
 }
 
 export interface AuthSession {
