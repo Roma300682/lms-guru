@@ -80,18 +80,23 @@ class ErrorBoundary extends React.Component<
       return (
         <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
           <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm max-w-md w-full space-y-4">
-            <h2 className="text-base font-bold text-slate-900">Memuat Ulang Aplikasi</h2>
+            <h2 className="text-base font-bold text-slate-900">Kendala Tampilan Aplikasi</h2>
             <p className="text-xs text-slate-500">
-              Terjadi sedikit kendala sinkronisasi data tampilan. Klik tombol di bawah untuk menyegarkan:
+              Terjadi sedikit kendala saat memuat data tampilan.
             </p>
+            {this.state.errorText && (
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg font-mono text-left overflow-auto max-h-32">
+                {this.state.errorText}
+              </div>
+            )}
             <button
               onClick={() => {
                 localStorage.clear();
                 window.location.reload();
               }}
-              className="w-full py-2.5 px-4 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors"
+              className="w-full py-2.5 px-4 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors shadow-xs"
             >
-              Segarkan & Buka Ulang
+              Reset Data & Muat Ulang
             </button>
           </div>
         </div>
