@@ -1,0 +1,6 @@
+{
+  "name": "GuruMapel LMS - Platform Mandiri Guru Mata Pelajaran",
+  "description": "LMS daring cerdas dan efisien khusus untuk guru mata pelajaran mengelola multi-rombel kelas, modul ajar, penugasan ber-rubrik, kuis CBT daring, presensi, dan buku nilai terpadu.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
