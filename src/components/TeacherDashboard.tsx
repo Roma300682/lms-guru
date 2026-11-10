@@ -57,24 +57,33 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ activeTab, o
             Semua Kelas
           </button>
 
-          {classes.map((c) => {
-            const count = students.filter((s) => s.classId === c.id).length;
-            const isActive = activeClassId === c.id;
-            return (
-              <button
-                key={c.id}
-                onClick={() => setActiveClassId(c.id)}
-                className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap ${
-                  isActive
-                    ? 'bg-white text-indigo-700 shadow-xs border border-slate-200'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                {c.name}{' '}
-                <span className="text-[10px] font-normal text-slate-400">({count})</span>
-              </button>
-            );
-          })}
+          {classes.length === 0 ? (
+            <button
+              onClick={onOpenProfile}
+              className="text-xs text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2.5 py-1 rounded-md font-medium transition-colors"
+            >
+              + Tambah Kelas
+            </button>
+          ) : (
+            classes.map((c) => {
+              const count = students.filter((s) => s.classId === c.id).length;
+              const isActive = activeClassId === c.id;
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => setActiveClassId(c.id)}
+                  className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap ${
+                    isActive
+                      ? 'bg-white text-indigo-700 shadow-xs border border-slate-200'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {c.name}{' '}
+                  <span className="text-[10px] font-normal text-slate-400">({count})</span>
+                </button>
+              );
+            })
+          )}
 
           <button
             onClick={() => setIsUploadOpen(true)}

@@ -48,6 +48,7 @@ interface LMSContextType {
   // Class & Student Actions
   addClass: (name: string) => void;
   deleteClass: (id: string) => void;
+  deleteAllClasses: () => void;
   addStudent: (name: string, classId: string) => void;
   addStudentsBatch: (newStudents: { name: string; classId: string }[]) => void;
   deleteStudent: (id: string) => void;
@@ -81,9 +82,9 @@ const LMSContext = createContext<LMSContextType | undefined>(undefined);
 const safeParse = <T,>(key: string, fallback: T): T => {
   try {
     const saved = localStorage.getItem(key);
-    if (!saved) return fallback;
+    if (saved === null) return fallback;
     const parsed = JSON.parse(saved);
-    if (!parsed) return fallback;
+    if (parsed === null || parsed === undefined) return fallback;
     return parsed;
   } catch {
     return fallback;
@@ -95,15 +96,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     safeParse('gm_teacher', initialTeacher)
   );
 
-  const [classes, setClasses] = useState<ClassRoom[]>(() => {
-    const list = safeParse('gm_classes', initialClasses);
-    return Array.isArray(list) && list.length > 0 ? list : initialClasses;
-  });
+  const [classes, setClasses] = useState<ClassRoom[]>(() =>
+    safeParse<ClassRoom[]>('gm_classes', initialClasses)
+  );
 
-  const [students, setStudents] = useState<Student[]>(() => {
-    const list = safeParse('gm_students', initialStudents);
-    return Array.isArray(list) && list.length > 0 ? list : initialStudents;
-  });
+  const [students, setStudents] = useState<Student[]>(() =>
+    safeParse<Student[]>('gm_students', initialStudents)
+  );
 
   const [materials, setMaterials] = useState<Material[]>(() =>
     safeParse('gm_materials', initialMaterials)
@@ -219,7 +218,19 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteClass = (id: string) => {
     setClasses((prev) => prev.filter((c) => c.id !== id));
     setStudents((prev) => prev.filter((s) => s.classId !== id));
+    setMaterials((prev) => prev.filter((m) => m.classId !== id));
+    setTasks((prev) => prev.filter((t) => t.classId !== id));
+    setAttendance((prev) => prev.filter((a) => a.classId !== id));
     if (activeClassId === id) setActiveClassId('all');
+  };
+
+  const deleteAllClasses = () => {
+    setClasses([]);
+    setStudents([]);
+    setMaterials((prev) => prev.filter((m) => m.classId === 'all'));
+    setTasks((prev) => prev.filter((t) => t.classId === 'all'));
+    setAttendance([]);
+    setActiveClassId('all');
   };
 
   const addStudent = (name: string, classId: string) => {
@@ -416,6 +427,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateTeacher,
         addClass,
         deleteClass,
+        deleteAllClasses,
         addStudent,
         addStudentsBatch,
         deleteStudent,

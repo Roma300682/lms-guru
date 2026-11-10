@@ -153,6 +153,13 @@ export const LoginPage: React.FC = () => {
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </form>
+          ) : classes.length === 0 ? (
+            <div className="space-y-3 py-2">
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 p-3.5 rounded-xl text-xs">
+                <span className="font-semibold block mb-1">Belum Ada Kelas Terdaftar</span>
+                Guru belum menambahkan rombel kelas atau mengunggah data siswa. Guru mata pelajaran dapat masuk melalui tab <strong>Guru & Admin</strong> untuk membuat kelas atau mengupload daftar siswa.
+              </div>
+            </div>
           ) : (
             <form onSubmit={handleStudentSubmit} className="space-y-4">
               <div className="text-xs text-slate-600">
@@ -176,26 +183,37 @@ export const LoginPage: React.FC = () => {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Pilih Nama Siswa ({classStudents.length} siswa terdaftar)
-                </label>
-                <select
-                  value={selectedStudentId || classStudents[0]?.id || ''}
-                  onChange={(e) => setSelectedStudentId(e.target.value)}
-                  className="w-full text-xs font-medium px-3 py-2.5 border border-slate-300 rounded-xl bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-                >
-                  {classStudents.map((s, idx) => (
-                    <option key={s.id} value={s.id}>
-                      {idx + 1}. {s.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {classStudents.length === 0 ? (
+                <div className="text-xs text-amber-700 bg-amber-50 p-3 rounded-xl border border-amber-200">
+                  Belum ada siswa terdaftar di {classes.find((c) => c.id === selectedClassId)?.name || 'kelas ini'}. Guru dapat mengunggah daftar siswa melalui Panel Guru & Admin.
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    Pilih Nama Siswa ({classStudents.length} siswa terdaftar)
+                  </label>
+                  <select
+                    value={selectedStudentId || classStudents[0]?.id || ''}
+                    onChange={(e) => setSelectedStudentId(e.target.value)}
+                    className="w-full text-xs font-medium px-3 py-2.5 border border-slate-300 rounded-xl bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                  >
+                    {classStudents.map((s, idx) => (
+                      <option key={s.id} value={s.id}>
+                        {idx + 1}. {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <button
                 type="submit"
-                className="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors shadow-xs"
+                disabled={classStudents.length === 0}
+                className={`w-full flex items-center justify-center gap-2 py-2.5 text-xs font-semibold text-white rounded-xl transition-colors shadow-xs ${
+                  classStudents.length === 0
+                    ? 'bg-slate-300 cursor-not-allowed'
+                    : 'bg-emerald-700 hover:bg-emerald-800'
+                }`}
               >
                 <Check className="w-3.5 h-3.5" />
                 <span>Masuk ke Ruang Belajar Siswa</span>

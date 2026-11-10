@@ -15,6 +15,7 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({ isOpen
     classes,
     addClass,
     deleteClass,
+    deleteAllClasses,
     students,
     addStudent,
     deleteStudent,
@@ -271,15 +272,37 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({ isOpen
                   </p>
                 </div>
 
-                {/* Primary Student Upload Trigger */}
-                <button
-                  type="button"
-                  onClick={() => setIsUploadModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 font-semibold px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-xs transition-colors"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>Upload Siswa (CSV/Excel)</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  {classes.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (
+                          confirm(
+                            'PERINGATAN: Apakah Anda yakin ingin MENGHAPUS SEMUA KELAS? Seluruh siswa dan data nilai/presensi di semua kelas akan dikosongkan.'
+                          )
+                        ) {
+                          deleteAllClasses();
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 font-medium text-[11px] px-2.5 py-1.5 text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors"
+                      title="Kosongkan seluruh kelas dan data siswa"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>Hapus Semua Kelas</span>
+                    </button>
+                  )}
+
+                  {/* Primary Student Upload Trigger */}
+                  <button
+                    type="button"
+                    onClick={() => setIsUploadModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 font-semibold px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-xs transition-colors"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Upload Siswa (CSV/Excel)</span>
+                  </button>
+                </div>
               </div>
 
               {/* Add Class Form */}
@@ -301,68 +324,82 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({ isOpen
               </form>
 
               {/* Class List */}
-              <div className="space-y-1.5 max-h-36 overflow-y-auto">
-                {classes.map((cls) => {
-                  const count = students.filter((s) => s.classId === cls.id).length;
-                  return (
-                    <div
-                      key={cls.id}
-                      className="flex items-center justify-between px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg"
-                    >
-                      <div>
-                        <span className="font-semibold text-slate-800">{cls.name}</span>
-                        <span className="text-slate-500 ml-2">({count} siswa)</span>
-                      </div>
-                      {classes.length > 1 && (
+              {classes.length === 0 ? (
+                <div className="py-4 px-3 text-center bg-slate-50 border border-dashed border-slate-300 rounded-lg text-slate-500 text-xs">
+                  Belum ada rombel kelas yang terdaftar. Silakan masukkan nama rombel baru di atas atau gunakan tombol <strong>Upload Siswa</strong>.
+                </div>
+              ) : (
+                <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                  {classes.map((cls) => {
+                    const count = students.filter((s) => s.classId === cls.id).length;
+                    return (
+                      <div
+                        key={cls.id}
+                        className="flex items-center justify-between px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg"
+                      >
+                        <div>
+                          <span className="font-semibold text-slate-800">{cls.name}</span>
+                          <span className="text-slate-500 ml-2">({count} siswa)</span>
+                        </div>
                         <button
                           type="button"
                           onClick={() => {
-                            if (confirm(`Hapus ${cls.name}? Siswa di dalamnya juga akan terhapus.`)) {
+                            if (
+                              confirm(
+                                `Hapus kelas "${cls.name}"? Semua data siswa, nilai, dan presensi di rombel ini akan dihapus.`
+                              )
+                            ) {
                               deleteClass(cls.id);
                             }
                           }}
-                          className="text-rose-500 hover:text-rose-700 p-1"
-                          title="Hapus Kelas"
+                          className="text-rose-500 hover:text-rose-700 hover:bg-rose-50 p-1.5 rounded-md transition-colors"
+                          title={`Hapus kelas ${cls.name}`}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Quick Add Single Student */}
               <div className="pt-2">
                 <span className="block font-medium text-slate-600 mb-1.5">
                   Tambah Siswa Manual (Satu per Satu):
                 </span>
-                <form onSubmit={handleAddStudent} className="grid grid-cols-3 gap-2">
-                  <select
-                    value={selectedClassForStudent}
-                    onChange={(e) => setSelectedClassForStudent(e.target.value)}
-                    className="px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-xs"
-                  >
-                    {classes.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    placeholder="Nama Lengkap Siswa"
-                    value={newStudentName}
-                    onChange={(e) => setNewStudentName(e.target.value)}
-                    className="px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-xs"
-                  />
-                  <button
-                    type="submit"
-                    className="font-medium py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors text-xs"
-                  >
-                    + Simpan Siswa
-                  </button>
-                </form>
+                {classes.length === 0 ? (
+                  <p className="text-slate-400 italic text-[11px]">
+                    Tambahkan minimal 1 kelas rombel terlebih dahulu di atas sebelum menambah siswa.
+                  </p>
+                ) : (
+                  <form onSubmit={handleAddStudent} className="grid grid-cols-3 gap-2">
+                    <select
+                      value={selectedClassForStudent || classes[0]?.id || ''}
+                      onChange={(e) => setSelectedClassForStudent(e.target.value)}
+                      className="px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-xs"
+                    >
+                      {classes.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="Nama Lengkap Siswa"
+                      value={newStudentName}
+                      onChange={(e) => setNewStudentName(e.target.value)}
+                      className="px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-xs"
+                    />
+                    <button
+                      type="submit"
+                      className="font-medium py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors text-xs"
+                    >
+                      + Simpan Siswa
+                    </button>
+                  </form>
+                )}
               </div>
             </div>
 

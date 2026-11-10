@@ -48,7 +48,8 @@ export const RekapTab: React.FC = () => {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Nilai_${teacher.subject}_${targetClassName.replace(/\s+/g, '_')}.csv`);
+    const safeClassName = (targetClassName || 'Kelas').replace(/\s+/g, '_');
+    link.setAttribute('download', `Nilai_${teacher.subject}_${safeClassName}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

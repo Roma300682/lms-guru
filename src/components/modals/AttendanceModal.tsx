@@ -69,21 +69,35 @@ export const AttendanceModal: React.FC<AttendanceModalProps> = ({ isOpen, onClos
           </button>
         </div>
 
-        <form onSubmit={handleSave} className="flex flex-col flex-1 overflow-hidden">
-          <div className="p-6 space-y-4 shrink-0 border-b border-slate-100">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Pilih Kelas
-                </label>
-                <select
-                  value={classId}
-                  onChange={(e) => {
-                    setClassId(e.target.value);
-                    setStatuses({});
-                  }}
-                  className="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 bg-white"
-                >
+        {classes.length === 0 ? (
+          <div className="p-6 text-center space-y-4">
+            <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-xl">
+              Belum ada rombel kelas yang terdaftar. Tambahkan kelas terlebih dahulu di <strong>Panel Guru & Admin</strong> sebelum mencatat presensi.
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 rounded-lg hover:bg-slate-800"
+            >
+              Tutup
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleSave} className="flex flex-col flex-1 overflow-hidden">
+            <div className="p-6 space-y-4 shrink-0 border-b border-slate-100">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    Pilih Kelas
+                  </label>
+                  <select
+                    value={classId || classes[0]?.id || ''}
+                    onChange={(e) => {
+                      setClassId(e.target.value);
+                      setStatuses({});
+                    }}
+                    className="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 bg-white"
+                  >
                   {classes.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -208,7 +222,8 @@ export const AttendanceModal: React.FC<AttendanceModalProps> = ({ isOpen, onClos
             </button>
           </div>
         </form>
-      </div>
+      )}
     </div>
-  );
+  </div>
+);
 };
