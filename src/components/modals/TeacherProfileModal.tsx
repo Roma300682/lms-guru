@@ -27,6 +27,12 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({ isOpen
   const [pin, setPin] = useState(teacher.pin || '1234');
   const [nip, setNip] = useState(teacher.nip || '');
   const [kktp, setKktp] = useState(String(teacher.kktp || 75));
+  const [recoveryQuestion, setRecoveryQuestion] = useState(
+    teacher.recoveryQuestion || 'Mata pelajaran apa yang Anda ampu?'
+  );
+  const [recoveryAnswer, setRecoveryAnswer] = useState(
+    teacher.recoveryAnswer || 'Biologi'
+  );
   const [profileSaved, setProfileSaved] = useState(false);
 
   // New Class Input
@@ -50,6 +56,8 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({ isOpen
       pin: pin.trim(),
       nip: nip.trim() || undefined,
       kktp: parseInt(kktp) || 75,
+      recoveryQuestion: recoveryQuestion.trim(),
+      recoveryAnswer: recoveryAnswer.trim(),
     });
     setProfileSaved(true);
     setTimeout(() => setProfileSaved(false), 2500);
@@ -205,6 +213,41 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({ isOpen
                     onChange={(e) => setKktp(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-xs font-mono"
                   />
+                </div>
+              </div>
+
+              {/* Recovery Question & Answer for Forgot PIN */}
+              <div className="bg-amber-50/60 p-3 rounded-lg border border-amber-200/70 space-y-2">
+                <span className="block font-semibold text-amber-900 text-[11px]">
+                  Pemulihan Keamanan (Jika Guru/Admin Lupa PIN):
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-700 mb-0.5">
+                      Pertanyaan Pemulihan
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={recoveryQuestion}
+                      onChange={(e) => setRecoveryQuestion(e.target.value)}
+                      placeholder="Contoh: Nama hewan peliharaan pertama?"
+                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-700 mb-0.5">
+                      Jawaban Pemulihan
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={recoveryAnswer}
+                      onChange={(e) => setRecoveryAnswer(e.target.value)}
+                      placeholder="Jawaban rahasia Anda"
+                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500 text-xs"
+                    />
+                  </div>
                 </div>
               </div>
 

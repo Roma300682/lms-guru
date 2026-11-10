@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { useLMS } from '../context/LMSContext';
 import { GraduationCap, User, Lock, ArrowRight, Check, AlertCircle, Cloud } from 'lucide-react';
 import { DeployGuideModal } from './modals/DeployGuideModal';
+import { ForgotPasswordModal } from './modals/ForgotPasswordModal';
 
 export const LoginPage: React.FC = () => {
   const { teacher, classes, students, loginAsTeacher, loginAsStudent } = useLMS();
 
   const [role, setRole] = useState<'teacher' | 'student'>('teacher');
   const [isDeployGuideOpen, setIsDeployGuideOpen] = useState(false);
+  const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
 
   // Teacher login state
   const [pin, setPin] = useState('');
@@ -131,6 +133,16 @@ export const LoginPage: React.FC = () => {
                     <span>{teacherError}</span>
                   </p>
                 )}
+
+                <div className="flex justify-end mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsForgotPasswordOpen(true)}
+                    className="text-[11px] text-indigo-600 hover:text-indigo-800 hover:underline font-medium transition-colors"
+                  >
+                    Lupa PIN Guru / Admin?
+                  </button>
+                </div>
               </div>
 
               <button
@@ -213,6 +225,11 @@ export const LoginPage: React.FC = () => {
       <DeployGuideModal
         isOpen={isDeployGuideOpen}
         onClose={() => setIsDeployGuideOpen(false)}
+      />
+
+      <ForgotPasswordModal
+        isOpen={isForgotPasswordOpen}
+        onClose={() => setIsForgotPasswordOpen(false)}
       />
     </div>
   );

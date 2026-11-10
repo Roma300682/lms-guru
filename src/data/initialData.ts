@@ -4,6 +4,9 @@ export const initialTeacher: TeacherProfile = {
   name: 'Ibu Siti Rahmawati, S.Pd.',
   subject: 'Biologi',
   pin: '1234',
+  kktp: 75,
+  recoveryQuestion: 'Mata pelajaran apa yang Anda ampu?',
+  recoveryAnswer: 'Biologi',
 };
 
 export const initialClasses: ClassRoom[] = [

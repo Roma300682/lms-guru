@@ -55,6 +55,8 @@ export interface TeacherProfile {
   pin: string; // PIN masuk guru / admin (default "1234")
   nip?: string; // NIP Guru (opsional)
   kktp?: number; // Kriteria Ketuntasan Minimal / KKTP (default 75)
+  recoveryQuestion?: string; // Pertanyaan pemulihan sandi
+  recoveryAnswer?: string; // Jawaban pemulihan sandi
 }
 
 export interface AuthSession {

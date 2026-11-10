@@ -37,6 +37,7 @@ interface LMSContextType {
   loginAsTeacher: (pin: string) => boolean;
   loginAsStudent: (studentId: string) => void;
   logout: () => void;
+  resetTeacherPin: (newPin: string) => void;
 
   // Actions
   setActiveClassId: (id: string) => void;
@@ -166,6 +167,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const logout = () => {
     setAuthSession(null);
+  };
+
+  const resetTeacherPin = (newPin: string) => {
+    if (!newPin.trim()) return;
+    setTeacher((prev) => ({ ...prev, pin: newPin.trim() }));
   };
 
   // Persistence effects
@@ -403,6 +409,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         loginAsTeacher,
         loginAsStudent,
         logout,
+        resetTeacherPin,
         setActiveClassId,
         setViewMode,
         setCurrentStudentId,
