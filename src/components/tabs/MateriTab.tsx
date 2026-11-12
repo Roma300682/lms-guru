@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useLMS } from '../../context/LMSContext';
 import { AddMaterialModal } from '../modals/AddMaterialModal';
+import { FileAttachmentBadge } from '../FileAttachmentBadge';
 import { Plus, BookOpen, ExternalLink, Trash2 } from 'lucide-react';
 
 export const MateriTab: React.FC = () => {
@@ -76,9 +77,17 @@ export const MateriTab: React.FC = () => {
                 </button>
               </div>
 
-              <div className="text-sm text-slate-700 leading-relaxed bg-slate-50/70 p-3.5 rounded-lg border border-slate-100 whitespace-pre-wrap">
-                {mat.content}
-              </div>
+              {mat.content && (
+                <div className="text-sm text-slate-700 leading-relaxed bg-slate-50/70 p-3.5 rounded-lg border border-slate-100 whitespace-pre-wrap">
+                  {mat.content}
+                </div>
+              )}
+
+              {mat.attachment && (
+                <div className="pt-1">
+                  <FileAttachmentBadge attachment={mat.attachment} showDownload={true} />
+                </div>
+              )}
 
               {mat.linkUrl && (
                 <div className="pt-1">

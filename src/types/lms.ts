@@ -11,11 +11,21 @@ export interface ClassRoom {
   name: string; // misal: "Kelas X-1"
 }
 
+export type MaterialFileType = 'pdf' | 'word' | 'excel' | 'other';
+
+export interface MaterialAttachment {
+  name: string;
+  size: string; // e.g. "245 KB" or "1.5 MB"
+  type: MaterialFileType;
+  dataUrl: string; // Base64 Data URL for instant download & viewing
+}
+
 export interface Material {
   id: string;
   title: string;
   content: string; // Teks rangkuman materi
   linkUrl?: string; // Link referensi (YouTube / Drive / Web)
+  attachment?: MaterialAttachment; // Dokumen Word (.doc, .docx), Excel (.xls, .xlsx), atau PDF
   classId: string; // 'all' atau ID kelas tertentu
   date: string;
 }
@@ -39,6 +49,7 @@ export interface Task {
   dueDate: string;
   classId: string; // 'all' atau ID kelas
   createdAt: string;
+  attachment?: MaterialAttachment; // Dokumen file soal / LKPD (Word, Excel, PDF)
 }
 
 export interface AttendanceRecord {

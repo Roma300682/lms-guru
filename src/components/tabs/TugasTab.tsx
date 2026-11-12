@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useLMS } from '../../context/LMSContext';
 import { AddTaskModal } from '../modals/AddTaskModal';
 import { GradeModal } from '../modals/GradeModal';
+import { FileAttachmentBadge } from '../FileAttachmentBadge';
 import { Submission } from '../../types/lms';
 import { Plus, ClipboardList, ChevronDown, ChevronUp, CheckCircle, Clock, Trash2, Edit3 } from 'lucide-react';
 
@@ -103,9 +104,20 @@ export const TugasTab: React.FC = () => {
                     </div>
                   </div>
 
-                  <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100 whitespace-pre-wrap">
-                    {task.instructions}
-                  </p>
+                  {task.instructions && (
+                    <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100 whitespace-pre-wrap">
+                      {task.instructions}
+                    </p>
+                  )}
+
+                  {task.attachment && (
+                    <div className="space-y-1">
+                      <span className="text-[11px] font-semibold text-slate-700 block">
+                        Berkas Lembar Soal / LKPD Terlampir:
+                      </span>
+                      <FileAttachmentBadge attachment={task.attachment} showDownload={true} />
+                    </div>
+                  )}
 
                   {/* Submission Statistics & Toggle */}
                   <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">

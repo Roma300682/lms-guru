@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useLMS } from '../context/LMSContext';
 import { BookOpen, ClipboardList, Award, ExternalLink, Send, CheckCircle, Clock } from 'lucide-react';
+import { FileAttachmentBadge } from './FileAttachmentBadge';
 
 export const StudentPortal: React.FC = () => {
   const {
@@ -168,9 +169,16 @@ export const StudentPortal: React.FC = () => {
                   <span>{mat.date}</span>
                 </div>
                 <h3 className="text-base font-bold text-slate-900">{mat.title}</h3>
-                <div className="text-sm text-slate-700 leading-relaxed bg-slate-50 p-4 rounded-lg border border-slate-100 whitespace-pre-wrap">
-                  {mat.content}
-                </div>
+                {mat.content && (
+                  <div className="text-sm text-slate-700 leading-relaxed bg-slate-50 p-4 rounded-lg border border-slate-100 whitespace-pre-wrap">
+                    {mat.content}
+                  </div>
+                )}
+                {mat.attachment && (
+                  <div className="pt-1">
+                    <FileAttachmentBadge attachment={mat.attachment} showDownload={true} />
+                  </div>
+                )}
                 {mat.linkUrl && (
                   <div className="pt-1">
                     <a
@@ -240,14 +248,25 @@ export const StudentPortal: React.FC = () => {
                     </div>
                   </div>
 
-                  <div>
-                    <span className="text-xs font-semibold text-slate-700 block mb-1">
-                      Petunjuk Tugas:
-                    </span>
-                    <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100 whitespace-pre-wrap">
-                      {task.instructions}
-                    </p>
-                  </div>
+                  {task.instructions && (
+                    <div>
+                      <span className="text-xs font-semibold text-slate-700 block mb-1">
+                        Petunjuk Tugas:
+                      </span>
+                      <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100 whitespace-pre-wrap">
+                        {task.instructions}
+                      </p>
+                    </div>
+                  )}
+
+                  {task.attachment && (
+                    <div className="space-y-1.5 pt-1">
+                      <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                        <span>Berkas Lembar Soal / LKPD untuk Dikerjakan:</span>
+                      </span>
+                      <FileAttachmentBadge attachment={task.attachment} showDownload={true} />
+                    </div>
+                  )}
 
                   {/* Submission detail if exists */}
                   {mySubmission && !isSubmitting && (
