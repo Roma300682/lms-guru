@@ -19,6 +19,11 @@ import {
   initialSubmissions,
   initialAttendance,
 } from '../data/initialData';
+import {
+  saveFileAttachment,
+  getFileAttachment,
+  deleteFileAttachment,
+} from '../utils/fileStorage';
 
 interface LMSContextType {
   // State
@@ -189,20 +194,108 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [classes]);
 
+  // Materials persistence with IndexedDB fallback for heavy file attachments
   useEffect(() => {
-    localStorage.setItem('gm_materials', JSON.stringify(materials));
+    try {
+      localStorage.setItem('gm_materials', JSON.stringify(materials));
+    } catch {
+      // If localStorage quota exceeded, save heavy attachments to IndexedDB
+      const safeMaterials = materials.map((m) => {
+        if (m.attachment?.dataUrl) {
+          saveFileAttachment(m.id, m.attachment.dataUrl);
+          return {
+            ...m,
+            attachment: {
+              ...m.attachment,
+              dataUrl: '', // strip large string to save localStorage quota
+            },
+          };
+        }
+        return m;
+      });
+      try {
+        localStorage.setItem('gm_materials', JSON.stringify(safeMaterials));
+      } catch (e) {
+        console.warn('LocalStorage save failed for materials:', e);
+      }
+    }
   }, [materials]);
 
+  // Tasks persistence with IndexedDB fallback for heavy question files
   useEffect(() => {
-    localStorage.setItem('gm_tasks', JSON.stringify(tasks));
+    try {
+      localStorage.setItem('gm_tasks', JSON.stringify(tasks));
+    } catch {
+      const safeTasks = tasks.map((t) => {
+        if (t.attachment?.dataUrl) {
+          saveFileAttachment(t.id, t.attachment.dataUrl);
+          return {
+            ...t,
+            attachment: {
+              ...t.attachment,
+              dataUrl: '', // strip large string to save localStorage quota
+            },
+          };
+        }
+        return t;
+      });
+      try {
+        localStorage.setItem('gm_tasks', JSON.stringify(safeTasks));
+      } catch (e) {
+        console.warn('LocalStorage save failed for tasks:', e);
+      }
+    }
   }, [tasks]);
 
+  // Hydrate materials and tasks attachments from IndexedDB if dataUrl was stripped
   useEffect(() => {
-    localStorage.setItem('gm_submissions', JSON.stringify(submissions));
+    materials.forEach((m) => {
+      if (m.attachment && !m.attachment.dataUrl) {
+        getFileAttachment(m.id).then((url) => {
+          if (url) {
+            setMaterials((prev) =>
+              prev.map((item) =>
+                item.id === m.id
+                  ? { ...item, attachment: { ...item.attachment!, dataUrl: url } }
+                  : item
+              )
+            );
+          }
+        });
+      }
+    });
+
+    tasks.forEach((t) => {
+      if (t.attachment && !t.attachment.dataUrl) {
+        getFileAttachment(t.id).then((url) => {
+          if (url) {
+            setTasks((prev) =>
+              prev.map((item) =>
+                item.id === t.id
+                  ? { ...item, attachment: { ...item.attachment!, dataUrl: url } }
+                  : item
+              )
+            );
+          }
+        });
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('gm_submissions', JSON.stringify(submissions));
+    } catch (e) {
+      console.warn('LocalStorage save failed for submissions:', e);
+    }
   }, [submissions]);
 
   useEffect(() => {
-    localStorage.setItem('gm_attendance', JSON.stringify(attendance));
+    try {
+      localStorage.setItem('gm_attendance', JSON.stringify(attendance));
+    } catch (e) {
+      console.warn('LocalStorage save failed for attendance:', e);
+    }
   }, [attendance]);
 
   const updateTeacher = (profile: Partial<TeacherProfile>) => {
@@ -315,10 +408,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: 'm_' + Date.now(),
       date: today,
     };
+    if (newMaterial.attachment?.dataUrl) {
+      saveFileAttachment(newMaterial.id, newMaterial.attachment.dataUrl);
+    }
     setMaterials((prev) => [newMaterial, ...prev]);
   };
 
   const deleteMaterial = (id: string) => {
+    deleteFileAttachment(id);
     setMaterials((prev) => prev.filter((m) => m.id !== id));
   };
 
@@ -329,10 +426,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: 't_' + Date.now(),
       createdAt: today,
     };
+    if (newTask.attachment?.dataUrl) {
+      saveFileAttachment(newTask.id, newTask.attachment.dataUrl);
+    }
     setTasks((prev) => [newTask, ...prev]);
   };
 
   const deleteTask = (id: string) => {
+    deleteFileAttachment(id);
     setTasks((prev) => prev.filter((t) => t.id !== id));
     setSubmissions((prev) => prev.filter((s) => s.taskId !== id));
   };

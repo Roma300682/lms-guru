@@ -10,7 +10,7 @@ interface AddTaskModalProps {
 }
 
 export const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose }) => {
-  const { classes, addTask, activeClassId } = useLMS();
+  const { classes, addTask, activeClassId, setActiveClassId } = useLMS();
 
   const [title, setTitle] = useState('');
   const [instructions, setInstructions] = useState('');
@@ -19,13 +19,28 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose }) =
     nextWeek.setDate(nextWeek.getDate() + 7);
     return nextWeek.toISOString().split('T')[0];
   });
-  const [targetClass, setTargetClass] = useState(activeClassId === 'all' ? 'all' : activeClassId);
+  const [targetClass, setTargetClass] = useState(() =>
+    activeClassId && activeClassId !== 'all' && classes.some((c) => c.id === activeClassId)
+      ? activeClassId
+      : 'all'
+  );
 
   // File soal / LKPD attachment state
   const [attachment, setAttachment] = useState<MaterialAttachment | null>(null);
   const [fileError, setFileError] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync targetClass whenever modal opens
+  React.useEffect(() => {
+    if (isOpen) {
+      if (activeClassId && activeClassId !== 'all' && classes.some((c) => c.id === activeClassId)) {
+        setTargetClass(activeClassId);
+      } else {
+        setTargetClass('all');
+      }
+    }
+  }, [isOpen, activeClassId, classes]);
 
   if (!isOpen) return null;
 
@@ -93,6 +108,11 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose }) =
       classId: targetClass,
       attachment: attachment || undefined,
     });
+
+    // Ensure view switches to target class so task is immediately visible
+    if (targetClass !== 'all' && activeClassId !== targetClass && activeClassId !== 'all') {
+      setActiveClassId(targetClass);
+    }
 
     // Reset form
     setTitle('');

@@ -10,18 +10,33 @@ interface AddMaterialModalProps {
 }
 
 export const AddMaterialModal: React.FC<AddMaterialModalProps> = ({ isOpen, onClose }) => {
-  const { classes, addMaterial, activeClassId } = useLMS();
+  const { classes, addMaterial, activeClassId, setActiveClassId } = useLMS();
 
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
-  const [targetClass, setTargetClass] = useState(activeClassId === 'all' ? 'all' : activeClassId);
+  const [targetClass, setTargetClass] = useState(() =>
+    activeClassId && activeClassId !== 'all' && classes.some((c) => c.id === activeClassId)
+      ? activeClassId
+      : 'all'
+  );
 
   // File upload state
   const [attachment, setAttachment] = useState<MaterialAttachment | null>(null);
   const [fileError, setFileError] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync targetClass whenever modal opens
+  React.useEffect(() => {
+    if (isOpen) {
+      if (activeClassId && activeClassId !== 'all' && classes.some((c) => c.id === activeClassId)) {
+        setTargetClass(activeClassId);
+      } else {
+        setTargetClass('all');
+      }
+    }
+  }, [isOpen, activeClassId, classes]);
 
   if (!isOpen) return null;
 
@@ -89,6 +104,11 @@ export const AddMaterialModal: React.FC<AddMaterialModalProps> = ({ isOpen, onCl
       attachment: attachment || undefined,
       classId: targetClass,
     });
+
+    // Ensure view switches to target class so material is immediately visible
+    if (targetClass !== 'all' && activeClassId !== targetClass && activeClassId !== 'all') {
+      setActiveClassId(targetClass);
+    }
 
     // Reset form
     setTitle('');
