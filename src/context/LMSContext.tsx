@@ -105,7 +105,7 @@ interface LMSContextType {
   updateTeacher: (profile: Partial<TeacherProfile>) => void;
 
   // Class & Student Actions
-  addClass: (name: string) => void;
+  addClass: (name: string) => string | null;
   updateClass: (id: string, patch: Partial<Pick<ClassRoom, 'name' | 'whatsappGroupUrl'>>) => void;
   deleteClass: (id: string) => void;
   deleteAllClasses: () => void;
@@ -243,6 +243,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const studentClaimedMapRef = useRef<Record<string, string>>({});
   const taskOwnerMapRef = useRef<Record<string, string>>({});
   const submissionStudentUidMapRef = useRef<Record<string, string>>({});
+  const pendingClassWritesRef = useRef<Record<string, Promise<void>>>({});
   const hasSeededCloudRef = useRef<boolean>(false);
   const isSeedingCloudRef = useRef<boolean>(false);
   const cloudIdsRef = useRef<{
@@ -1738,21 +1739,31 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  const addClass = (name: string) => {
-    if (!isAuthorizedTeacher || !firebaseUser || !name.trim()) return;
+  const addClass = (name: string): string | null => {
+    if (!isAuthorizedTeacher || !firebaseUser || !name.trim()) return null;
     const newClass: ClassRoom = {
       id: 'c_' + Date.now(),
       name: clampStr(name.trim(), 80),
     };
     setClasses((prev) => [...prev, newClass]);
 
-    void setDoc(doc(db, 'classes', newClass.id), {
+    const writePromise = setDoc(doc(db, 'classes', newClass.id), {
       name: newClass.name,
       visibility: 'classroom',
       ownerUid: firebaseUser.uid,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-    }).catch((err) => handleFirestoreError(err, OperationType.CREATE, `classes/${newClass.id}`));
+    })
+      .then(() => {
+        cloudIdsRef.current.classes.add(newClass.id);
+      })
+      .catch((err) => handleFirestoreError(err, OperationType.CREATE, `classes/${newClass.id}`))
+      .finally(() => {
+        delete pendingClassWritesRef.current[newClass.id];
+      });
+
+    pendingClassWritesRef.current[newClass.id] = writePromise;
+    return newClass.id;
   };
 
   const updateClass = (id: string, patch: Partial<Pick<ClassRoom, 'name' | 'whatsappGroupUrl'>>) => {
@@ -1860,6 +1871,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const writeStudent = async () => {
       try {
+        const pendingClass = pendingClassWritesRef.current[newStudent.classId];
+        if (pendingClass) {
+          await pendingClass;
+        }
         const batch = writeBatch(db);
         batch.set(doc(db, 'students', newStudent.id), {
           name: newStudent.name,
@@ -1951,8 +1966,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addStudentsBatch = (newStudents: { name: string; classId: string; whatsapp?: string }[]) => {
     if (!isAuthorizedTeacher || !firebaseUser) return;
-    const validClassIds = new Set(classes.map((c) => c.id));
-    const fallbackClassId = classes[0]?.id || 'c1';
+    const validClassIds = new Set([
+      ...classes.map((c) => c.id),
+      ...Object.keys(pendingClassWritesRef.current),
+    ]);
+    const fallbackClassId = classes[0]?.id || newStudents[0]?.classId || 'c1';
 
     const toAdd: Student[] = newStudents
       .filter((s) => s.name && s.name.trim().length > 0)
@@ -1979,6 +1997,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (firebaseUser && isCloudAdmin) {
       const writeBatchStudents = async () => {
         try {
+          const referencedClassIds = Array.from(new Set(toAdd.map((s) => s.classId)));
+          await Promise.all(
+            referencedClassIds
+              .map((cid) => pendingClassWritesRef.current[cid])
+              .filter((p): p is Promise<void> => Boolean(p))
+          );
+
           const ops: Array<{ ref: ReturnType<typeof doc>; data: Record<string, unknown> }> = [];
           toAdd.forEach((s) => {
             ops.push({
@@ -2578,9 +2603,18 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     if (cleanSubject) attPayload.subject = clampStr(cleanSubject, 120);
 
-    void setDoc(doc(db, 'attendance', newRecord.id), attPayload).catch((err) =>
-      handleFirestoreError(err, OperationType.CREATE, `attendance/${newRecord.id}`)
-    );
+    const writeAtt = async () => {
+      try {
+        const pendingClass = pendingClassWritesRef.current[classId];
+        if (pendingClass) {
+          await pendingClass;
+        }
+        await setDoc(doc(db, 'attendance', newRecord.id), attPayload);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, `attendance/${newRecord.id}`);
+      }
+    };
+    void writeAtt();
   };
 
   const deleteAttendance = (id: string) => {

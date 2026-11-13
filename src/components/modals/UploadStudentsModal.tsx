@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLMS } from '../../context/LMSContext';
-import { X, Upload, FileText, Check, AlertCircle, Users } from 'lucide-react';
+import { X, Upload, FileText, Check, Users, Plus } from 'lucide-react';
 
 interface UploadStudentsModalProps {
   isOpen: boolean;
@@ -15,7 +15,7 @@ export const UploadStudentsModal: React.FC<UploadStudentsModalProps> = ({
   defaultClassId,
   onSuccess,
 }) => {
-  const { classes, addStudentsBatch, setActiveClassId } = useLMS();
+  const { classes, addClass, addStudentsBatch, setActiveClassId } = useLMS();
 
   const [targetClassId, setTargetClassId] = useState<string>(() => {
     if (defaultClassId && defaultClassId !== 'all' && classes.some((c) => c.id === defaultClassId)) {
@@ -23,6 +23,8 @@ export const UploadStudentsModal: React.FC<UploadStudentsModalProps> = ({
     }
     return classes[0]?.id || '';
   });
+  const [newClassName, setNewClassName] = useState('');
+  const [isAddingClassInline, setIsAddingClassInline] = useState(false);
   const [inputText, setInputText] = useState('');
   const [parsedEntries, setParsedEntries] = useState<{ name: string; whatsapp?: string }[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -37,8 +39,23 @@ export const UploadStudentsModal: React.FC<UploadStudentsModalProps> = ({
       } else {
         setTargetClassId('');
       }
+      setIsAddingClassInline(false);
+      setNewClassName('');
     }
   }, [isOpen, defaultClassId, classes]);
+
+  const handleCreateClass = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleaned = newClassName.trim();
+    if (!cleaned) return;
+    const createdId = addClass(cleaned);
+    if (createdId) {
+      setTargetClassId(createdId);
+      setActiveClassId(createdId);
+    }
+    setNewClassName('');
+    setIsAddingClassInline(false);
+  };
 
   if (!isOpen) return null;
 
@@ -192,38 +209,105 @@ export const UploadStudentsModal: React.FC<UploadStudentsModalProps> = ({
         </div>
 
         {classes.length === 0 ? (
-          <div className="p-6 text-center space-y-4">
-            <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-xl">
-              Belum ada rombel kelas yang terdaftar. Tambahkan kelas terlebih dahulu di <strong>Panel Guru & Admin</strong> sebelum mengimpor siswa.
+          <form onSubmit={handleCreateClass} className="p-6 space-y-4">
+            <div className="p-4 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-xl space-y-1">
+              <span className="font-semibold block">Belum Ada Rombel Kelas Terdaftar</span>
+              <span className="block text-amber-800">
+                Buat rombel kelas pertama langsung di bawah ini agar Anda bisa langsung mengimpor daftar siswa.
+              </span>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 rounded-lg hover:bg-slate-800"
-            >
-              Tutup
-            </button>
-          </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Nama Rombel Kelas Baru
+              </label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  required
+                  value={newClassName}
+                  onChange={(e) => setNewClassName(e.target.value)}
+                  placeholder="Contoh: Kelas X IPA 1, XI IPS 2, atau VII-A"
+                  className="flex-1 text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                  autoFocus
+                />
+                <button
+                  type="submit"
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-xs transition-colors shrink-0"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Buat Kelas &amp; Lanjut Impor</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                Tutup
+              </button>
+            </div>
+          </form>
         ) : (
           <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
             <div className="p-6 space-y-4 overflow-y-auto flex-1">
-              {/* Target Class Selection */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Pilih Kelas Tujuan
-                </label>
+              {/* Target Class Selection + Inline Create Class */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Pilih Kelas Tujuan
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingClassInline(!isAddingClassInline)}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>{isAddingClassInline ? 'Batal Tambah Kelas' : 'Tambah Rombel Baru'}</span>
+                  </button>
+                </div>
+
+                {isAddingClassInline && (
+                  <div className="flex gap-2 p-2.5 bg-indigo-50/60 border border-indigo-100 rounded-lg">
+                    <input
+                      type="text"
+                      value={newClassName}
+                      onChange={(e) => setNewClassName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleCreateClass(e);
+                        }
+                      }}
+                      placeholder="Nama kelas baru (cth: Kelas X-2)"
+                      className="flex-1 text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={handleCreateClass}
+                      className="px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shrink-0"
+                    >
+                      Simpan Kelas
+                    </button>
+                  </div>
+                )}
+
                 <select
                   value={targetClassId || classes[0]?.id || ''}
                   onChange={(e) => setTargetClassId(e.target.value)}
                   className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                 >
-                {classes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+                  {classes.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
             {/* File Upload Trigger */}
             <div className="border border-dashed border-slate-300 rounded-xl p-4 text-center bg-slate-50/60 hover:bg-slate-50 transition-colors">

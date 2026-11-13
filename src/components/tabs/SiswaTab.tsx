@@ -5,11 +5,12 @@ import { UploadStudentsModal } from '../modals/UploadStudentsModal';
 import { buildWaMeUrl, normalizeWhatsAppNumber } from '../../utils/whatsapp';
 
 export const SiswaTab: React.FC = () => {
-  const { students, classes, activeClassId, setActiveClassId, addStudent, updateStudent, deleteStudent } = useLMS();
+  const { students, classes, activeClassId, setActiveClassId, addClass, addStudent, updateStudent, deleteStudent } = useLMS();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isAddingSingle, setIsAddingSingle] = useState(false);
+  const [newClassName, setNewClassName] = useState('');
   const [newStudentName, setNewStudentName] = useState('');
   const [newStudentWa, setNewStudentWa] = useState('');
   const [editingWaId, setEditingWaId] = useState<string | null>(null);
@@ -34,14 +35,30 @@ export const SiswaTab: React.FC = () => {
 
   const handleAddSingleStudent = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newStudentName.trim() || !targetClassForSingle) return;
-    addStudent(newStudentName.trim(), targetClassForSingle, newStudentWa.trim() || undefined);
+    const resolvedClassId =
+      targetClassForSingle && classes.some((c) => c.id === targetClassForSingle)
+        ? targetClassForSingle
+        : classes[0]?.id || '';
+    if (!newStudentName.trim() || !resolvedClassId) return;
+    addStudent(newStudentName.trim(), resolvedClassId, newStudentWa.trim() || undefined);
     setNewStudentName('');
     setNewStudentWa('');
     setIsAddingSingle(false);
-    if (activeClassId !== 'all' && activeClassId !== targetClassForSingle) {
-      setActiveClassId(targetClassForSingle);
+    if (activeClassId !== 'all' && activeClassId !== resolvedClassId) {
+      setActiveClassId(resolvedClassId);
     }
+  };
+
+  const handleQuickCreateClass = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleaned = newClassName.trim();
+    if (!cleaned) return;
+    const createdId = addClass(cleaned);
+    if (createdId) {
+      setTargetClassForSingle(createdId);
+      setActiveClassId(createdId);
+    }
+    setNewClassName('');
   };
 
   const handleSaveStudentWa = (studentId: string) => {
@@ -124,8 +141,40 @@ export const SiswaTab: React.FC = () => {
         </div>
       </div>
 
+      {/* Inline Prompt to Create First Class when no rombel exists */}
+      {classes.length === 0 && (
+        <form
+          onSubmit={handleQuickCreateClass}
+          className="bg-amber-50 border border-amber-200 p-4 rounded-xl space-y-2.5 text-xs"
+        >
+          <div>
+            <h3 className="font-bold text-amber-950">Belum Ada Rombel Kelas Terdaftar</h3>
+            <p className="text-amber-800 mt-0.5">
+              Tambahkan minimal 1 rombel kelas terlebih dahulu sebelum menambahkan atau mengimpor siswa.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              required
+              placeholder="Nama Rombel Baru (cth: Kelas X IPA 1 atau VII-A)"
+              value={newClassName}
+              onChange={(e) => setNewClassName(e.target.value)}
+              className="flex-1 px-3 py-2 bg-white border border-amber-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-xs"
+            />
+            <button
+              type="submit"
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-xs transition-colors shrink-0"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Buat Rombel Kelas</span>
+            </button>
+          </div>
+        </form>
+      )}
+
       {/* Inline Form Add Single Student */}
-      {isAddingSingle && (
+      {isAddingSingle && classes.length > 0 && (
         <form
           onSubmit={handleAddSingleStudent}
           className="bg-indigo-50/50 border border-indigo-100 p-3.5 rounded-xl flex flex-wrap items-center gap-2 text-xs animate-in fade-in duration-150"

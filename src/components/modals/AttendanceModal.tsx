@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useLMS } from '../../context/LMSContext';
 import { AttendanceStatus } from '../../types/lms';
-import { X, CheckCheck } from 'lucide-react';
+import { X, CheckCheck, Plus } from 'lucide-react';
 
 interface AttendanceModalProps {
   isOpen: boolean;
@@ -9,10 +9,11 @@ interface AttendanceModalProps {
 }
 
 export const AttendanceModal: React.FC<AttendanceModalProps> = ({ isOpen, onClose }) => {
-  const { classes, students, activeClassId, activeSubject, availableSubjects, teacherSubjects, saveAttendance } = useLMS();
+  const { classes, students, activeClassId, activeSubject, availableSubjects, teacherSubjects, addClass, setActiveClassId, saveAttendance } = useLMS();
 
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [classId, setClassId] = useState(activeClassId === 'all' ? classes[0]?.id || 'c1' : activeClassId);
+  const [newClassName, setNewClassName] = useState('');
   const [subject, setSubject] = useState(
     activeSubject !== 'all' ? activeSubject : (teacherSubjects[0] || '')
   );
@@ -24,8 +25,11 @@ export const AttendanceModal: React.FC<AttendanceModalProps> = ({ isOpen, onClos
   React.useEffect(() => {
     if (isOpen) {
       setSubject(activeSubject !== 'all' ? activeSubject : (teacherSubjects[0] || ''));
+      if (classes.length > 0 && !classes.some((c) => c.id === classId)) {
+        setClassId(activeClassId !== 'all' && classes.some((c) => c.id === activeClassId) ? activeClassId : classes[0].id);
+      }
     }
-  }, [isOpen, activeSubject, teacherSubjects]);
+  }, [isOpen, activeSubject, teacherSubjects, classes, activeClassId, classId]);
 
   if (!isOpen) return null;
 
@@ -79,18 +83,53 @@ export const AttendanceModal: React.FC<AttendanceModalProps> = ({ isOpen, onClos
         </div>
 
         {classes.length === 0 ? (
-          <div className="p-6 text-center space-y-4">
-            <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-xl">
-              Belum ada rombel kelas yang terdaftar. Tambahkan kelas terlebih dahulu di <strong>Panel Guru & Admin</strong> sebelum mencatat presensi.
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!newClassName.trim()) return;
+              const createdId = addClass(newClassName.trim());
+              if (createdId) {
+                setClassId(createdId);
+                setActiveClassId(createdId);
+              }
+              setNewClassName('');
+            }}
+            className="p-6 space-y-4"
+          >
+            <div className="p-4 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-xl space-y-1">
+              <span className="font-semibold block">Belum Ada Rombel Kelas Terdaftar</span>
+              <span className="block text-amber-800">
+                Buat rombel kelas pertama di bawah ini sebelum mencatat presensi.
+              </span>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 rounded-lg hover:bg-slate-800"
-            >
-              Tutup
-            </button>
-          </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                required
+                value={newClassName}
+                onChange={(e) => setNewClassName(e.target.value)}
+                placeholder="Nama Rombel Baru (cth: Kelas X IPA 1)"
+                className="flex-1 text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                autoFocus
+              />
+              <button
+                type="submit"
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Buat Kelas</span>
+              </button>
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg"
+              >
+                Tutup
+              </button>
+            </div>
+          </form>
         ) : (
           <form onSubmit={handleSave} className="flex flex-col flex-1 overflow-hidden">
             <div className="p-6 space-y-4 shrink-0 border-b border-slate-100">
