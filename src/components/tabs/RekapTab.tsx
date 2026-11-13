@@ -63,12 +63,12 @@ export const RekapTab: React.FC = () => {
   return (
     <div className="space-y-4">
       {/* Sub-tab switcher & Action Buttons */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200">
-        <div className="flex items-center gap-2">
-          <div className="p-1 bg-slate-100 rounded-lg flex items-center">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="p-1 bg-slate-100 rounded-lg flex items-center w-full sm:w-auto">
             <button
               onClick={() => setSubTab('nilai')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+              className={`flex-1 sm:flex-initial px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
                 subTab === 'nilai'
                   ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -78,7 +78,7 @@ export const RekapTab: React.FC = () => {
             </button>
             <button
               onClick={() => setSubTab('presensi')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+              className={`flex-1 sm:flex-initial px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
                 subTab === 'presensi'
                   ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -89,12 +89,12 @@ export const RekapTab: React.FC = () => {
           </div>
 
           {activeClassId === 'all' && classes.length > 1 ? (
-            <div className="flex items-center gap-1.5 text-xs text-slate-600">
+            <div className="flex items-center gap-1.5 text-xs text-slate-600 w-full sm:w-auto">
               <span className="hidden sm:inline">Pilih Rombel:</span>
               <select
                 value={selectedLocalClassId || classes[0]?.id || ''}
                 onChange={(e) => setSelectedLocalClassId(e.target.value)}
-                className="text-xs px-2 py-1 border border-slate-300 rounded-lg bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500 font-medium"
+                className="w-full sm:w-auto text-xs px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500 font-medium"
               >
                 {classes.map((c) => {
                   const cnt = students.filter((s) => s.classId === c.id).length;
@@ -113,7 +113,7 @@ export const RekapTab: React.FC = () => {
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {subTab === 'nilai' ? (
             <>
               <button

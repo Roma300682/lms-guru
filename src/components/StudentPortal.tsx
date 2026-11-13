@@ -127,13 +127,13 @@ export const StudentPortal: React.FC = () => {
             </select>
           </div>
         ) : (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 font-semibold">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 font-semibold truncate max-w-[200px]">
               Masuk sebagai: {student?.name}
             </span>
             <button
               onClick={logout}
-              className="text-xs text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors font-medium"
+              className="text-xs text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors font-medium shrink-0"
             >
               Ganti Siswa
             </button>
@@ -237,10 +237,10 @@ export const StudentPortal: React.FC = () => {
       )}
 
       {/* Navigation tabs for Student */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto no-scrollbar">
         <button
           onClick={() => setActiveTab('materi')}
-          className={`inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg transition-colors ${
+          className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap shrink-0 ${
             activeTab === 'materi'
               ? 'bg-slate-900 text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -252,26 +252,26 @@ export const StudentPortal: React.FC = () => {
 
         <button
           onClick={() => setActiveTab('tugas')}
-          className={`inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg transition-colors ${
+          className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap shrink-0 ${
             activeTab === 'tugas'
               ? 'bg-slate-900 text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
           }`}
         >
           <ClipboardList className="w-3.5 h-3.5" />
-          <span>Tugas & LKPD ({studentTasks.length})</span>
+          <span>Tugas &amp; LKPD ({studentTasks.length})</span>
         </button>
 
         <button
           onClick={() => setActiveTab('rekap')}
-          className={`inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg transition-colors ${
+          className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap shrink-0 ${
             activeTab === 'rekap'
               ? 'bg-slate-900 text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
           }`}
         >
           <Award className="w-3.5 h-3.5" />
-          <span>Nilai & Kehadiran Saya</span>
+          <span>Nilai &amp; Kehadiran ({studentTasks.length})</span>
         </button>
       </div>
 

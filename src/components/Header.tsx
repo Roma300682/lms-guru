@@ -14,112 +14,114 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
 
   const currentStudent = students.find((s) => s.id === currentStudentId);
 
+  const navItems: Array<{
+    id: 'materi' | 'tugas' | 'soal-ai' | 'whatsapp' | 'siswa' | 'rekap';
+    label: string;
+    mobileLabel: string;
+    icon?: React.ReactNode;
+    activeClass: string;
+  }> = [
+    {
+      id: 'materi',
+      label: 'Materi Ajar',
+      mobileLabel: 'Materi',
+      activeClass: 'bg-slate-900 text-white md:bg-slate-100 md:text-slate-900 font-semibold',
+    },
+    {
+      id: 'tugas',
+      label: 'Tugas & Nilai',
+      mobileLabel: 'Tugas',
+      activeClass: 'bg-slate-900 text-white md:bg-slate-100 md:text-slate-900 font-semibold',
+    },
+    {
+      id: 'soal-ai',
+      label: 'Buat Soal AI',
+      mobileLabel: 'Soal AI',
+      icon: <Sparkles className="w-3.5 h-3.5 shrink-0" />,
+      activeClass: 'bg-indigo-600 text-white md:bg-indigo-50 md:text-indigo-700 md:border md:border-indigo-200 font-semibold',
+    },
+    {
+      id: 'whatsapp',
+      label: 'WhatsApp',
+      mobileLabel: 'WhatsApp',
+      icon: <MessageCircle className="w-3.5 h-3.5 shrink-0" />,
+      activeClass: 'bg-emerald-600 text-white md:bg-emerald-50 md:text-emerald-700 md:border md:border-emerald-200 font-semibold',
+    },
+    {
+      id: 'siswa',
+      label: 'Daftar Siswa',
+      mobileLabel: 'Siswa',
+      activeClass: 'bg-slate-900 text-white md:bg-slate-100 md:text-slate-900 font-semibold',
+    },
+    {
+      id: 'rekap',
+      label: 'Buku Nilai & Absensi',
+      mobileLabel: 'Nilai & Absen',
+      activeClass: 'bg-slate-900 text-white md:bg-slate-100 md:text-slate-900 font-semibold',
+    },
+  ];
+
   return (
-    <header className="sticky top-0 z-30 bg-white border-b border-slate-200">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+    <header className="sticky top-0 z-30 bg-white border-b border-slate-200 print:hidden">
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-4">
         {/* Zone 1: Brand title */}
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="w-9 h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-lg shadow-xs">
-            <GraduationCap className="w-5 h-5" />
+        <div className="flex items-center gap-2.5 sm:gap-3 shrink-0 min-w-0">
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-lg shadow-xs shrink-0">
+            <GraduationCap className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
-          <div>
-            <span className="text-base font-bold tracking-tight text-slate-900 block leading-tight">
+          <div className="min-w-0">
+            <span className="text-sm sm:text-base font-bold tracking-tight text-slate-900 block leading-tight">
               GuruMapel
             </span>
-            <span className="text-xs text-slate-500 block">
+            <span className="text-[11px] sm:text-xs text-slate-500 block truncate max-w-[110px] sm:max-w-[160px]">
               {teacher.subject}
             </span>
           </div>
         </div>
 
-        {/* Zone 2: Navigation Links (Teacher Mode only) */}
+        {/* Zone 2: Desktop Navigation Links (Teacher Mode only) */}
         {viewMode === 'teacher' ? (
-          <nav className="flex items-center gap-1 sm:gap-2 overflow-x-auto">
-            <button
-              onClick={() => setActiveTab('materi')}
-              className={`px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 ${
-                activeTab === 'materi'
-                  ? 'bg-slate-100 text-slate-900 font-semibold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Materi Ajar
-            </button>
-            <button
-              onClick={() => setActiveTab('tugas')}
-              className={`px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 ${
-                activeTab === 'tugas'
-                  ? 'bg-slate-100 text-slate-900 font-semibold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Tugas & Nilai
-            </button>
-            <button
-              onClick={() => setActiveTab('soal-ai')}
-              className={`inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 ${
-                activeTab === 'soal-ai'
-                  ? 'bg-indigo-50 text-indigo-700 font-semibold border border-indigo-200'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Buat Soal AI</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('whatsapp')}
-              className={`inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 ${
-                activeTab === 'whatsapp'
-                  ? 'bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
-              <span>WhatsApp</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('siswa')}
-              className={`px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 ${
-                activeTab === 'siswa'
-                  ? 'bg-slate-100 text-slate-900 font-semibold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Daftar Siswa
-            </button>
-            <button
-              onClick={() => setActiveTab('rekap')}
-              className={`px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 ${
-                activeTab === 'rekap'
-                  ? 'bg-slate-100 text-slate-900 font-semibold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Buku Nilai & Absensi
-            </button>
+          <nav className="hidden md:flex items-center gap-1 lg:gap-2 overflow-x-auto no-scrollbar">
+            {navItems.map((item) => {
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={`inline-flex items-center gap-1 px-2.5 lg:px-3 py-1.5 text-xs lg:text-sm font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 ${
+                    isActive
+                      ? item.activeClass
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  }`}
+                >
+                  {item.icon}
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
           </nav>
         ) : (
-          <div className="text-xs text-slate-600 flex items-center gap-2">
-            <span className="font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+          <div className="text-xs text-slate-600 flex items-center gap-2 min-w-0">
+            <span className="font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 truncate max-w-[140px] sm:max-w-none">
               Siswa: {currentStudent ? currentStudent.name : 'Siswa'}
             </span>
             <span aria-hidden="true" className="hidden sm:inline">·</span>
-            <span className="hidden sm:inline">{teacher.subject}</span>
+            <span className="hidden sm:inline truncate">{teacher.subject}</span>
           </div>
         )}
 
         {/* Zone 3: Actions & Logout */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {viewMode === 'teacher' ? (
             <>
               <button
                 onClick={onOpenProfile}
-                className="hidden md:flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-700 hover:text-slate-900 hover:bg-slate-50 rounded-lg border border-slate-200 transition-colors"
+                className="flex items-center gap-1.5 p-1.5 md:px-3 md:py-1.5 text-xs text-slate-700 hover:text-slate-900 hover:bg-slate-50 rounded-lg border border-slate-200 transition-colors"
                 title="Panel Pengaturan Guru & Administrator"
               >
-                <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
-                <span className="truncate max-w-[130px] font-medium">{teacher.name}</span>
-                <span className="text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-semibold uppercase">
+                <ShieldCheck className="w-4 h-4 md:w-3.5 md:h-3.5 text-indigo-600" />
+                <span className="hidden md:inline truncate max-w-[110px] font-medium">{teacher.name}</span>
+                <span className="hidden lg:inline text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-semibold uppercase">
                   Admin
                 </span>
               </button>
@@ -135,21 +137,22 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
 
               <button
                 onClick={() => setViewMode('student')}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 rounded-lg transition-colors whitespace-nowrap"
+                className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 rounded-lg transition-colors whitespace-nowrap"
                 title="Pratinjau tampilan yang dilihat siswa"
               >
                 <UserCheck className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Pratinjau</span> Siswa
+                <span className="hidden sm:inline">Pratinjau</span>
+                <span>Siswa</span>
               </button>
             </>
           ) : (
             authSession?.role === 'teacher' && (
               <button
                 onClick={() => setViewMode('teacher')}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg shadow-xs transition-colors whitespace-nowrap"
+                className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg shadow-xs transition-colors whitespace-nowrap"
               >
                 <GraduationCap className="w-3.5 h-3.5" />
-                <span>Ke Ruang Guru</span>
+                <span>Ruang Guru</span>
               </button>
             )
           )}
@@ -159,7 +162,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
             onClick={() => {
               logout();
             }}
-            className="flex items-center gap-1 p-1.5 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg border border-rose-200 transition-colors"
+            className="flex items-center gap-1 p-1.5 sm:px-2.5 sm:py-1.5 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg border border-rose-200 transition-colors"
             title="Keluar / Ganti Akun"
           >
             <LogOut className="w-4 h-4" />
@@ -179,6 +182,29 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
           </button>
         </div>
       </div>
+
+      {/* Dedicated Mobile Navigation Strip (Teacher Mode) */}
+      {viewMode === 'teacher' && (
+        <nav className="md:hidden border-t border-slate-100 bg-slate-50/80 px-3 py-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+          {navItems.map((item) => {
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 ${
+                  isActive
+                    ? item.activeClass
+                    : 'bg-white text-slate-600 border border-slate-200 hover:text-slate-900'
+                }`}
+              >
+                {item.icon}
+                <span>{item.mobileLabel}</span>
+              </button>
+            );
+          })}
+        </nav>
+      )}
     </header>
   );
 };

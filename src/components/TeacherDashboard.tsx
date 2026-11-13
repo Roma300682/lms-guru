@@ -35,49 +35,49 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   return (
     <div className="space-y-5">
       {/* Subject & Class Quick Bar */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white rounded-xl border border-slate-200 p-3.5 sm:p-4 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-3 sm:gap-4 print:hidden">
         {/* Left: Subject & Teacher Info */}
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-700 shrink-0">
-            <BookOpen className="w-5 h-5" />
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-700 shrink-0">
+            <BookOpen className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-base font-bold text-slate-900 leading-tight">
-                Mata Pelajaran {teacher.subject}
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <h1 className="text-sm sm:text-base font-bold text-slate-900 leading-tight">
+                {teacher.subject}
               </h1>
-              <span className="text-xs text-slate-500">· {teacher.name}</span>
+              <span className="text-xs text-slate-500 truncate">· {teacher.name}</span>
             </div>
-            <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
-              <Users className="w-3.5 h-3.5" />
+            <p className="text-[11px] sm:text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
+              <Users className="w-3.5 h-3.5 shrink-0" />
               <span>
-                Total <strong>{students.length}</strong> siswa aktif di <strong>{classes.length}</strong> rombel kelas
+                <strong>{students.length}</strong> siswa aktif di <strong>{classes.length}</strong> rombel
               </span>
             </p>
           </div>
         </div>
 
         {/* Right: Class Switcher (Filter by Class) */}
-        <div className="flex flex-wrap items-center gap-1.5 bg-slate-50 p-1.5 rounded-lg border border-slate-200">
-          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider px-2">
-            Pilih Kelas:
+        <div className="flex items-center gap-1.5 bg-slate-50 p-1.5 rounded-lg border border-slate-200 overflow-x-auto no-scrollbar sm:flex-wrap">
+          <span className="hidden sm:inline text-[11px] font-semibold text-slate-500 uppercase tracking-wider px-2 shrink-0">
+            Kelas:
           </span>
 
           <button
             onClick={() => setActiveClassId('all')}
-            className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap ${
+            className={`px-3 py-1.5 sm:py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
               activeClassId === 'all'
                 ? 'bg-white text-indigo-700 shadow-xs border border-slate-200'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            Semua Kelas
+            Semua
           </button>
 
           {classes.length === 0 ? (
             <button
               onClick={onOpenProfile}
-              className="text-xs text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2.5 py-1 rounded-md font-medium transition-colors"
+              className="text-xs text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2.5 py-1.5 sm:py-1 rounded-md font-medium transition-colors whitespace-nowrap shrink-0"
             >
               + Tambah Kelas
             </button>
@@ -89,7 +89,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 <button
                   key={c.id}
                   onClick={() => setActiveClassId(c.id)}
-                  className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap ${
+                  className={`px-3 py-1.5 sm:py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
                     isActive
                       ? 'bg-white text-indigo-700 shadow-xs border border-slate-200'
                       : 'text-slate-600 hover:text-slate-900'
@@ -104,16 +104,16 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
           <button
             onClick={() => setIsUploadOpen(true)}
-            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-md transition-colors ml-1"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 sm:py-1 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-md transition-colors ml-auto sm:ml-1 whitespace-nowrap shrink-0"
             title="Upload Data Siswa Massal (CSV/Excel)"
           >
             <Upload className="w-3 h-3" />
-            <span>Upload Siswa</span>
+            <span>Upload</span>
           </button>
 
           <button
             onClick={onOpenProfile}
-            className="p-1 text-slate-400 hover:text-slate-700 rounded-md hover:bg-slate-200 transition-colors"
+            className="p-1.5 sm:p-1 text-slate-400 hover:text-slate-700 rounded-md hover:bg-slate-200 transition-colors shrink-0"
             title="Panel Pengaturan Guru & Admin"
           >
             <Settings className="w-3.5 h-3.5" />

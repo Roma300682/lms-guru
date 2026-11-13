@@ -32,7 +32,7 @@ const MainContent: React.FC = () => {
         onOpenDeployGuide={() => setIsDeployModalOpen(true)}
       />
 
-      <div className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6">
+      <div className="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6">
         {viewMode === 'teacher' && authSession.role === 'teacher' ? (
           <TeacherDashboard
             activeTab={activeTab}

@@ -86,7 +86,16 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({ prefill, onClearPrefil
 
   useEffect(() => {
     fetch('/api/whatsapp/status')
-      .then((res) => (res.ok ? res.json() : null))
+      .then(async (res) => {
+        if (!res.ok) return null;
+        const txt = await res.text();
+        if (!txt.trim()) return null;
+        try {
+          return JSON.parse(txt);
+        } catch {
+          return null;
+        }
+      })
       .then((data) => {
         if (data && typeof data.configured === 'boolean') {
           setGatewayStatus(data);
@@ -253,7 +262,23 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({ prefill, onClearPrefil
         body: JSON.stringify({ recipients }),
       });
 
-      const data = await res.json();
+      const rawText = await res.text();
+      let data: {
+        error?: string;
+        sentCount?: number;
+        failedCount?: number;
+        results?: BroadcastResultItem[];
+      } = {};
+      if (rawText.trim()) {
+        try {
+          data = JSON.parse(rawText);
+        } catch {
+          throw new Error(`Respons server tidak valid (HTTP ${res.status}).`);
+        }
+      } else {
+        throw new Error(`Server tidak mengembalikan data (HTTP ${res.status}).`);
+      }
+
       if (!res.ok) {
         throw new Error(data?.error || 'Gagal mengirim broadcast WhatsApp.');
       }
@@ -419,17 +444,17 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({ prefill, onClearPrefil
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <input
                     type="url"
                     value={groupUrlDraft}
                     onChange={(e) => setGroupUrlDraft(e.target.value)}
                     placeholder="https://chat.whatsapp.com/..."
-                    className="flex-1 text-xs px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                    className="w-full sm:flex-1 sm:min-w-0 text-xs px-3 py-2 sm:py-1.5 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
                   />
                   <button
                     type="submit"
-                    className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors shrink-0"
+                    className="px-3 py-2 sm:py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors shrink-0"
                   >
                     Simpan
                   </button>
@@ -439,7 +464,7 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({ prefill, onClearPrefil
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={() => handleCopyText(generalBroadcastMessage, 'msg')}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shrink-0"
+                      className="inline-flex items-center gap-1 px-3 py-2 sm:py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shrink-0"
                       title="Salin pesan otomatis lalu buka Grup WA kelas"
                     >
                       <ExternalLink className="w-3.5 h-3.5" />

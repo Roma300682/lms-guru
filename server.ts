@@ -90,6 +90,25 @@ const QUESTION_RESPONSE_SCHEMA = {
   required: ['title', 'multipleChoice', 'essay'],
 };
 
+function safeParseModelJson(rawText: string | undefined): RawAIResult {
+  const cleaned = (rawText || '')
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+
+  if (!cleaned) {
+    throw new Error('Respons AI kosong. Silakan coba lagi.');
+  }
+
+  try {
+    return JSON.parse(cleaned) as RawAIResult;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Format JSON tidak lengkap';
+    throw new Error(`Hasil AI terpotong atau tidak valid (${msg}). Silakan coba lagi.`);
+  }
+}
+
 async function generateWithRetry<T>(fn: () => Promise<T>, maxRetries = 2): Promise<T> {
   let lastError: unknown;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -100,7 +119,7 @@ async function generateWithRetry<T>(fn: () => Promise<T>, maxRetries = 2): Promi
       const status = (err as { status?: number })?.status;
       const isRetryable = status === undefined || status >= 500 || status === 429;
       if (attempt < maxRetries && isRetryable) {
-        await new Promise((resolve) => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
+        await new Promise((resolve) => setTimeout(resolve, 800 * Math.pow(2, attempt)));
         continue;
       }
       throw err;
@@ -165,53 +184,95 @@ async function startServer() {
         },
       });
 
-      const systemInstruction = `Anda adalah guru mata pelajaran "${subject}" yang ahli menyusun evaluasi pembelajaran kurikulum Indonesia.
+      const generateChunk = async (
+        pgTarget: number,
+        essayTarget: number,
+        batchHint: string
+      ): Promise<RawAIResult> => {
+        const systemInstruction = `Anda adalah guru mata pelajaran "${subject}" yang ahli menyusun evaluasi pembelajaran kurikulum Indonesia.
 Tugas Anda menyusun soal berkualitas HOTS maupun pemahaman konsep HANYA berdasarkan uraian materi yang diberikan pengguna.
 
 Aturan Ketat:
-1. Buat TEPAT ${rawPg} soal Pilihan Ganda (multipleChoice). Jika ${rawPg} = 0, kembalikan array kosong [].
-2. Buat TEPAT ${rawEssay} soal Uraian (essay). Jika ${rawEssay} = 0, kembalikan array kosong [].
-3. Setiap soal Pilihan Ganda wajib memiliki TEPAT 4 opsi jawaban (A, B, C, D) tanpa menyertakan awalan huruf seperti "A. " atau "1. " di teks opsi.
-4. Pastikan opsi pengecoh (distractor) masuk akal, setara panjangnya, dan hanya ada 1 jawaban paling benar (correctIndex bernilai 0, 1, 2, atau 3).
-5. Jangan sertakan nomor urut di awal teks pertanyaan.
-6. Gunakan bahasa Indonesia yang baik, baku, dan komunikatif (kecuali jika materi berbahasa asing seperti Bahasa Inggris/Arab, sesuaikan soal dengan bahasa materi).
-7. Pastikan seluruh soal bersumber langsung dan relevan dengan uraian materi yang diberikan.`;
+1. Buat TEPAT ${pgTarget} soal Pilihan Ganda (multipleChoice). Jika ${pgTarget} = 0, kembalikan array kosong [].
+2. Buat TEPAT ${essayTarget} soal Uraian (essay). Jika ${essayTarget} = 0, kembalikan array kosong [].
+3. Setiap soal Pilihan Ganda wajib memiliki TEPAT 4 opsi jawaban (A, B, C, D) tanpa awalan huruf "A. "/"1. ".
+4. Pastikan opsi pengecoh masuk akal dan hanya ada 1 jawaban paling benar (correctIndex: 0, 1, 2, atau 3).
+5. Pembahasan (explanation) dan kunci uraian (answerKey) cukup 1 kalimat padat dan jelas.
+6. Jangan sertakan nomor urut di awal teks pertanyaan.
+7. Gunakan bahasa Indonesia yang baik dan baku (kecuali jika materi berbahasa asing).`;
 
-      const userPrompt = `Susun paket soal evaluasi untuk mata pelajaran ${subject} dengan ketentuan:
-- Jumlah Pilihan Ganda: ${rawPg} soal
-- Jumlah Uraian: ${rawEssay} soal
+        const userPrompt = `Susun paket soal evaluasi untuk mata pelajaran ${subject} ${batchHint}dengan ketentuan:
+- Jumlah Pilihan Ganda: ${pgTarget} soal
+- Jumlah Uraian: ${essayTarget} soal
 
 === URAIAN MATERI ===
 ${uraianMateri.slice(0, 30000)}`;
 
-      const response = await generateWithRetry(() =>
-        ai.models.generateContent({
-          model: 'gemini-4-hydrogen',
-          contents: userPrompt,
-          config: {
-            systemInstruction,
-            responseMimeType: 'application/json',
-            responseSchema: QUESTION_RESPONSE_SCHEMA,
-            thinkingConfig: {
-              thinkingLevel: ThinkingLevel.LOW,
+        return generateWithRetry(async () => {
+          const response = await ai.models.generateContent({
+            model: 'gemini-4-hydrogen',
+            contents: userPrompt,
+            config: {
+              systemInstruction,
+              responseMimeType: 'application/json',
+              responseSchema: QUESTION_RESPONSE_SCHEMA,
+              maxOutputTokens: 8192,
+              thinkingConfig: {
+                thinkingLevel: ThinkingLevel.LOW,
+              },
             },
-          },
-        })
-      );
+          });
+          return safeParseModelJson(response.text);
+        });
+      };
 
-      const text = response.text;
-      if (!text) {
-        res.status(502).json({ error: 'AI tidak mengembalikan hasil soal. Silakan coba lagi.' });
-        return;
+      // Split PG > 15 into parallel chunks so output JSON never truncates or times out
+      const MAX_PG_PER_CHUNK = 15;
+      const chunks: Array<{ pg: number; essay: number; hint: string }> = [];
+
+      if (rawPg === 0) {
+        chunks.push({ pg: 0, essay: rawEssay, hint: '' });
+      } else {
+        let remainingPg = rawPg;
+        let idx = 1;
+        const totalBatches = Math.ceil(rawPg / MAX_PG_PER_CHUNK);
+        while (remainingPg > 0) {
+          const takePg = Math.min(MAX_PG_PER_CHUNK, remainingPg);
+          const takeEssay = idx === 1 ? rawEssay : 0;
+          chunks.push({
+            pg: takePg,
+            essay: takeEssay,
+            hint: totalBatches > 1 ? `(Bagian ${idx} dari ${totalBatches}, fokus variasi topik berbeda) ` : '',
+          });
+          remainingPg -= takePg;
+          idx++;
+        }
       }
 
-      const parsed = JSON.parse(text) as RawAIResult;
-      const now = Date.now();
+      const chunkResults = await Promise.all(
+        chunks.map((c) => generateChunk(c.pg, c.essay, c.hint))
+      );
 
-      const rawPGList = Array.isArray(parsed.multipleChoice) ? (parsed.multipleChoice as RawPGItem[]) : [];
+      const now = Date.now();
+      const allRawPG: RawPGItem[] = [];
+      const allRawEssay: RawEssayItem[] = [];
+      let chosenTitle = '';
+
+      chunkResults.forEach((parsed) => {
+        if (!chosenTitle && typeof parsed.title === 'string' && parsed.title.trim()) {
+          chosenTitle = parsed.title.trim();
+        }
+        if (Array.isArray(parsed.multipleChoice)) {
+          allRawPG.push(...(parsed.multipleChoice as RawPGItem[]));
+        }
+        if (Array.isArray(parsed.essay)) {
+          allRawEssay.push(...(parsed.essay as RawEssayItem[]));
+        }
+      });
+
       const multipleChoice = rawPg === 0
         ? []
-        : rawPGList.slice(0, rawPg).map((item, idx) => {
+        : allRawPG.slice(0, rawPg).map((item, idx) => {
             const rawOpts = Array.isArray(item.options)
               ? item.options.map((o) => String(o || '').trim()).filter(Boolean)
               : [];
@@ -233,22 +294,16 @@ ${uraianMateri.slice(0, 30000)}`;
             };
           });
 
-      const rawEssayList = Array.isArray(parsed.essay) ? (parsed.essay as RawEssayItem[]) : [];
       const essay = rawEssay === 0
         ? []
-        : rawEssayList.slice(0, rawEssay).map((item, idx) => ({
+        : allRawEssay.slice(0, rawEssay).map((item, idx) => ({
             id: `es_${now}_${idx}`,
             question: typeof item.question === 'string' ? item.question.trim() : `Soal Uraian ${idx + 1}`,
             answerKey: typeof item.answerKey === 'string' ? item.answerKey.trim() : '',
           }));
 
-      const title =
-        typeof parsed.title === 'string' && parsed.title.trim().length > 0
-          ? parsed.title.trim()
-          : `Latihan Soal ${subject}`;
-
       res.json({
-        title,
+        title: chosenTitle || `Latihan Soal ${subject}`,
         multipleChoice,
         essay,
       });

@@ -221,6 +221,24 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks 
     setErrorMsg('');
   };
 
+  const safeReadJson = async (response: Response) => {
+    const rawText = await response.text();
+    if (!rawText.trim()) {
+      throw new Error(
+        `Server tidak mengembalikan data (HTTP ${response.status}). Pastikan server backend aktif atau kurangi jumlah soal per proses.`
+      );
+    }
+    try {
+      return JSON.parse(rawText);
+    } catch {
+      throw new Error(
+        response.ok
+          ? 'Respons server bukan format JSON yang valid.'
+          : `Server mengembalikan respons tidak valid (HTTP ${response.status}). Pastikan endpoint /api berjalan.`
+      );
+    }
+  };
+
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
@@ -238,28 +256,58 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks 
 
     setIsGenerating(true);
     try {
-      const response = await fetch('/api/generate-questions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          uraianMateri: trimmed,
-          pgCount,
-          essayCount,
-          subject: teacher.subject,
-        }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data?.error || 'Gagal membuat soal dari server AI.');
+      // Split large requests (> 20 PG) into clean sequential batches to prevent gateway timeouts
+      const MAX_BATCH_PG = 20;
+      const batches: Array<{ pg: number; essay: number }> = [];
+      if (pgCount === 0) {
+        batches.push({ pg: 0, essay: essayCount });
+      } else {
+        let rem = pgCount;
+        let first = true;
+        while (rem > 0) {
+          const take = Math.min(MAX_BATCH_PG, rem);
+          batches.push({ pg: take, essay: first ? essayCount : 0 });
+          rem -= take;
+          first = false;
+        }
       }
 
-      const mcList: GeneratedPGQuestion[] = Array.isArray(data.multipleChoice) ? data.multipleChoice : [];
-      const esList: GeneratedEssayQuestion[] = Array.isArray(data.essay) ? data.essay : [];
+      const mcList: GeneratedPGQuestion[] = [];
+      const esList: GeneratedEssayQuestion[] = [];
+      let resolvedTitle = '';
+
+      for (let i = 0; i < batches.length; i++) {
+        const b = batches[i];
+        const response = await fetch('/api/generate-questions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            uraianMateri: trimmed,
+            pgCount: b.pg,
+            essayCount: b.essay,
+            subject: teacher.subject,
+          }),
+        });
+
+        const data = await safeReadJson(response);
+        if (!response.ok) {
+          throw new Error(data?.error || 'Gagal membuat soal dari server AI.');
+        }
+
+        if (!resolvedTitle && typeof data.title === 'string' && data.title.trim()) {
+          resolvedTitle = data.title.trim();
+        }
+        if (Array.isArray(data.multipleChoice)) {
+          mcList.push(...data.multipleChoice);
+        }
+        if (Array.isArray(data.essay)) {
+          esList.push(...data.essay);
+        }
+      }
 
       const newSet: GeneratedQuestionSet = {
         id: `qset_${Date.now()}`,
-        title: typeof data.title === 'string' && data.title.trim() ? data.title.trim() : `Latihan ${teacher.subject}`,
+        title: resolvedTitle || `Latihan ${teacher.subject}`,
         subject: teacher.subject,
         sourceMaterial: trimmed,
         createdAt: new Date().toISOString().split('T')[0],
@@ -624,7 +672,7 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
         {/* Saved Question History Sidebar */}
         {savedSets.length > 0 && (
-          <aside className="lg:col-span-1 space-y-2.5 print:hidden">
+          <aside className="order-2 lg:order-1 lg:col-span-1 space-y-2.5 print:hidden">
             <div className="bg-white rounded-xl border border-slate-200 p-3.5 space-y-2.5">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-800">
                 <History className="w-4 h-4 text-indigo-600" />
@@ -674,7 +722,7 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks 
         )}
 
         {/* Active Generated Question Editor & Preview */}
-        <section className={savedSets.length > 0 ? 'lg:col-span-3' : 'lg:col-span-4'}>
+        <section className={savedSets.length > 0 ? 'order-1 lg:order-2 lg:col-span-3' : 'lg:col-span-4'}>
           {!activeSet ? (
             <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
               <FileText className="w-9 h-9 text-slate-300 mx-auto mb-2.5" />
