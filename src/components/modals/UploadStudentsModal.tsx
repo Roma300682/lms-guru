@@ -376,6 +376,11 @@ export const UploadStudentsModal: React.FC<UploadStudentsModalProps> = ({
                     </div>
                   )}
                 </div>
+                {parsedEntries.some((entry) => !entry.whatsapp) && (
+                  <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5">
+                    Siswa yang belum tercantum No. WA tetap terimpor, namun guru perlu mengisi No. WA-nya di tab <strong>Daftar Siswa</strong> agar siswa tersebut bisa masuk melalui tautan.
+                  </p>
+                )}
               </div>
             )}
           </div>

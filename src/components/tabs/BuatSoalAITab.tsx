@@ -143,7 +143,6 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({
     classes,
     activeClassId,
     activeSubject,
-    availableSubjects,
     addTask,
     addCbtExam,
     cbtExams,
@@ -169,6 +168,7 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({
 
   const [showAnswerKey, setShowAnswerKey] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [confirmDeleteSetId, setConfirmDeleteSetId] = useState<string | null>(null);
 
   // Share to Task inline drawer
   const [isShareOpen, setIsShareOpen] = useState(false);
@@ -581,40 +581,19 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({
 
       {/* Generator Form */}
       <form onSubmit={handleGenerate} className="bg-white rounded-xl border border-slate-200 p-5 space-y-4 print:hidden">
-        {/* Mata Pelajaran Soal (Bebas) */}
-        <div className="space-y-1.5">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-            <label htmlFor="soal-subject" className="text-xs font-semibold text-slate-800 shrink-0">
-              Mata Pelajaran Soal (Bebas):
-            </label>
-            <input
-              id="soal-subject"
-              type="text"
-              value={questionSubject}
-              onChange={(e) => setQuestionSubject(e.target.value)}
-              placeholder="Ketik nama mapel apa saja..."
-              className="w-full sm:max-w-xs text-xs px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 bg-white"
-            />
-          </div>
-          {availableSubjects.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[11px] text-slate-500">Pilih cepat:</span>
-              {availableSubjects.map((subj) => (
-                <button
-                  key={subj}
-                  type="button"
-                  onClick={() => setQuestionSubject(subj)}
-                  className={`px-2 py-0.5 text-[11px] font-medium rounded-md border transition-colors ${
-                    questionSubject.trim().toLowerCase() === subj.toLowerCase()
-                      ? 'bg-indigo-50 text-indigo-700 border-indigo-200 font-semibold'
-                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                  }`}
-                >
-                  {subj}
-                </button>
-              ))}
-            </div>
-          )}
+        {/* Mata Pelajaran Soal */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <label htmlFor="soal-subject" className="text-xs font-semibold text-slate-800 shrink-0">
+            Mata Pelajaran Soal:
+          </label>
+          <input
+            id="soal-subject"
+            type="text"
+            value={questionSubject}
+            onChange={(e) => setQuestionSubject(e.target.value)}
+            placeholder="Ketik nama mapel..."
+            className="w-full sm:max-w-xs text-xs px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 bg-white"
+          />
         </div>
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -804,19 +783,42 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({
                           {setItem.multipleChoice.length} PG · {setItem.essay.length} Uraian · {setItem.createdAt}
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={(ev) => {
-                          ev.stopPropagation();
-                          if (confirm('Hapus paket soal ini dari riwayat?')) {
-                            handleDeleteSet(setItem.id);
-                          }
-                        }}
-                        className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors shrink-0"
-                        title="Hapus Paket Soal"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {confirmDeleteSetId === setItem.id ? (
+                        <div
+                          className="inline-flex items-center gap-1 shrink-0"
+                          onClick={(ev) => ev.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleDeleteSet(setItem.id);
+                              setConfirmDeleteSetId(null);
+                            }}
+                            className="text-[10px] font-semibold text-white bg-rose-600 hover:bg-rose-700 px-1.5 py-0.5 rounded"
+                          >
+                            Hapus
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteSetId(null)}
+                            className="text-[10px] text-slate-600 bg-white border border-slate-200 px-1.5 py-0.5 rounded"
+                          >
+                            Batal
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            setConfirmDeleteSetId(setItem.id);
+                          }}
+                          className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors shrink-0"
+                          title="Hapus Paket Soal"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   );
                 })}

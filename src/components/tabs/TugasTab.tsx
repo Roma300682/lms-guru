@@ -17,6 +17,7 @@ export const TugasTab: React.FC<TugasTabProps> = ({ onShareToWhatsApp }) => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const fallbackSubject = getPrimarySubject(teacher.subject);
 
@@ -136,17 +137,36 @@ export const TugasTab: React.FC<TugasTabProps> = ({ onShareToWhatsApp }) => {
                           </button>
                         </>
                       )}
-                      <button
-                        onClick={() => {
-                          if (confirm('Hapus tugas ini beserta seluruh pengumpulan siswa?')) {
-                            deleteTask(task.id);
-                          }
-                        }}
-                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
-                        title="Hapus Tugas"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {confirmDeleteId === task.id ? (
+                        <div className="inline-flex items-center gap-1 bg-rose-50 border border-rose-200 px-2 py-1 rounded-md">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              deleteTask(task.id);
+                              setConfirmDeleteId(null);
+                            }}
+                            className="text-[11px] font-semibold text-white bg-rose-600 hover:bg-rose-700 px-2 py-0.5 rounded"
+                          >
+                            Hapus
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="text-[11px] text-slate-600 hover:text-slate-800 px-1.5 py-0.5"
+                          >
+                            Batal
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(task.id)}
+                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
+                          title="Hapus Tugas"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
 

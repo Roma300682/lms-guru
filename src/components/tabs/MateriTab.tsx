@@ -15,6 +15,7 @@ export const MateriTab: React.FC<MateriTabProps> = ({ onShareToWhatsApp }) => {
   const { materials, deleteMaterial, activeClassId, setActiveClassId, activeSubject, setActiveSubject, classes, teacher } = useLMS();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const fallbackSubject = getPrimarySubject(teacher.subject);
 
@@ -105,7 +106,7 @@ export const MateriTab: React.FC<MateriTabProps> = ({ onShareToWhatsApp }) => {
                 }}
                 className="px-3.5 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors"
               >
-                Tampilkan Semua Kelas &amp; Mapel ({materials.length})
+                Tampilkan Semua Kelas ({materials.length})
               </button>
               <button
                 onClick={() => setIsModalOpen(true)}
@@ -178,17 +179,36 @@ export const MateriTab: React.FC<MateriTabProps> = ({ onShareToWhatsApp }) => {
                       <span>Kirim WA</span>
                     </button>
                   )}
-                  <button
-                    onClick={() => {
-                      if (confirm(`Hapus bahan ajar "${mat.title}"?`)) {
-                        deleteMaterial(mat.id);
-                      }
-                    }}
-                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
-                    title="Hapus Bahan Ajar"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {confirmDeleteId === mat.id ? (
+                    <div className="inline-flex items-center gap-1 bg-rose-50 border border-rose-200 px-2 py-1 rounded-md">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          deleteMaterial(mat.id);
+                          setConfirmDeleteId(null);
+                        }}
+                        className="text-[11px] font-semibold text-white bg-rose-600 hover:bg-rose-700 px-2 py-0.5 rounded"
+                      >
+                        Hapus
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="text-[11px] text-slate-600 hover:text-slate-800 px-1.5 py-0.5"
+                      >
+                        Batal
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteId(mat.id)}
+                      className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
+                      title="Hapus Bahan Ajar"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
 

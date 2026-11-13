@@ -10,7 +10,7 @@ interface AddMaterialModalProps {
 }
 
 export const AddMaterialModal: React.FC<AddMaterialModalProps> = ({ isOpen, onClose }) => {
-  const { classes, addMaterial, activeClassId, setActiveClassId, activeSubject, availableSubjects, teacherSubjects } = useLMS();
+  const { classes, addMaterial, activeClassId, setActiveClassId, activeSubject, teacherSubjects } = useLMS();
 
   const defaultSubject = activeSubject !== 'all' ? activeSubject : (teacherSubjects[0] || '');
 
@@ -180,10 +180,10 @@ export const AddMaterialModal: React.FC<AddMaterialModalProps> = ({ isOpen, onCl
               </select>
             </div>
 
-            {/* Mata Pelajaran (Bebas) */}
+            {/* Mata Pelajaran */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Mata Pelajaran (Bebas)
+                Mata Pelajaran
               </label>
               <input
                 type="text"
@@ -194,26 +194,6 @@ export const AddMaterialModal: React.FC<AddMaterialModalProps> = ({ isOpen, onCl
               />
             </div>
           </div>
-
-          {availableSubjects.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5 -mt-1">
-              <span className="text-[11px] text-slate-500">Pilih cepat:</span>
-              {availableSubjects.map((subj) => (
-                <button
-                  key={subj}
-                  type="button"
-                  onClick={() => setSubject(subj)}
-                  className={`px-2 py-0.5 text-[11px] font-medium rounded-md border transition-colors ${
-                    subject.trim().toLowerCase() === subj.toLowerCase()
-                      ? 'bg-indigo-50 text-indigo-700 border-indigo-200 font-semibold'
-                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                  }`}
-                >
-                  {subj}
-                </button>
-              ))}
-            </div>
-          )}
 
           {/* Upload File Dokumen (Word, Excel, PDF) */}
           <div className="space-y-1.5">

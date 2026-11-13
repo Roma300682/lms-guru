@@ -5,7 +5,7 @@ import { FileAttachmentBadge, readFileAsAttachment } from './FileAttachmentBadge
 import { StudentCbtPanel } from './StudentCbtPanel';
 import { MaterialAttachment } from '../types/lms';
 import { normalizeWhatsAppNumber } from '../utils/whatsapp';
-import { parseSubjects, getPrimarySubject } from '../utils/subjects';
+import { getPrimarySubject } from '../utils/subjects';
 
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -38,7 +38,6 @@ export const StudentPortal: React.FC = () => {
   const firebaseAuthProvidersUrl = `https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/providers`;
 
   const [activeTab, setActiveTab] = useState<'materi' | 'tugas' | 'cbt' | 'rekap'>('materi');
-  const [selectedSubject, setSelectedSubject] = useState<string>('all');
 
   // Currently selected student (never fall back to another student when logged in as a student)
   const student =
@@ -46,59 +45,19 @@ export const StudentPortal: React.FC = () => {
     (authSession?.role === 'teacher' ? students[0] : undefined);
   const studentClass = classes.find((c) => c.id === student?.classId);
 
-  const teacherSubjects = parseSubjects(teacher.subject);
   const fallbackSubject = getPrimarySubject(teacher.subject);
 
-  // Materials, tasks, and attendance matching the student's class
-  const classScopedMaterials = materials.filter(
+  // Materials, tasks, attendance & CBT exams matching the student's class
+  const studentMaterials = materials.filter(
     (m) => m.classId === 'all' || (student && m.classId === student.classId)
   );
-  const classScopedTasks = tasks.filter(
+  const studentTasks = tasks.filter(
     (t) => t.classId === 'all' || (student && t.classId === student.classId)
   );
-  const classScopedAttendance = attendance.filter((a) => a.classId === student?.classId);
-  const classScopedCbtExams = cbtExams.filter(
+  const studentAttendance = attendance.filter((a) => a.classId === student?.classId);
+  const studentCbtExams = cbtExams.filter(
     (ex) => ex.classId === 'all' || (student && ex.classId === student.classId)
   );
-
-  // Build available subjects for student filter
-  const studentSubjects: string[] = [];
-  const seenSubjectKeys = new Set<string>();
-  const registerStudentSubject = (raw?: string) => {
-    const val = raw?.trim();
-    if (!val) return;
-    const key = val.toLowerCase();
-    if (!seenSubjectKeys.has(key)) {
-      seenSubjectKeys.add(key);
-      studentSubjects.push(val);
-    }
-  };
-  teacherSubjects.forEach(registerStudentSubject);
-  classScopedMaterials.forEach((m) => registerStudentSubject(m.subject));
-  classScopedTasks.forEach((t) => registerStudentSubject(t.subject));
-  classScopedAttendance.forEach((a) => registerStudentSubject(a.subject));
-  classScopedCbtExams.forEach((ex) => registerStudentSubject(ex.subject));
-
-  useEffect(() => {
-    if (
-      selectedSubject !== 'all' &&
-      !studentSubjects.some((s) => s.toLowerCase() === selectedSubject.toLowerCase())
-    ) {
-      setSelectedSubject('all');
-    }
-  }, [selectedSubject, studentSubjects.join('|')]);
-
-  const matchesSelectedSubject = (itemSubject?: string) => {
-    if (selectedSubject === 'all') return true;
-    const resolved = itemSubject?.trim() || fallbackSubject;
-    return resolved.toLowerCase() === selectedSubject.toLowerCase();
-  };
-
-  // Filter materials, tasks & CBT exams for this student + subject filter
-  const studentMaterials = classScopedMaterials.filter((m) => matchesSelectedSubject(m.subject));
-  const studentTasks = classScopedTasks.filter((t) => matchesSelectedSubject(t.subject));
-  const studentCbtExams = classScopedCbtExams.filter((ex) => matchesSelectedSubject(ex.subject));
-  const studentAttendance = classScopedAttendance.filter((a) => matchesSelectedSubject(a.subject));
 
   // Task answer submission form state
   const [submittingTaskId, setSubmittingTaskId] = useState<string | null>(null);
@@ -326,7 +285,7 @@ export const StudentPortal: React.FC = () => {
       <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="text-xs text-indigo-600 font-semibold tracking-wide uppercase">
-            Portal Belajar Siswa · {teacherSubjects.length > 0 ? teacherSubjects.join(' · ') : teacher.subject}
+            Portal Belajar Siswa · {teacher.subject || fallbackSubject}
           </div>
           <h2 className="text-lg font-bold text-slate-900">
             Halo, {student ? student.name : 'Siswa'}!
@@ -449,41 +408,6 @@ export const StudentPortal: React.FC = () => {
               </span>
             )}
           </div>
-        </div>
-      )}
-
-      {/* Subject Filter Strip when more than 1 subject exists */}
-      {studentSubjects.length > 1 && (
-        <div className="flex flex-wrap items-center gap-1.5 bg-white rounded-xl border border-slate-200 px-3.5 py-2.5">
-          <span className="text-[11px] font-semibold text-slate-500 mr-1">Mata Pelajaran:</span>
-          <button
-            type="button"
-            onClick={() => setSelectedSubject('all')}
-            className={`px-2.5 py-1 text-xs font-medium rounded-lg border transition-colors ${
-              selectedSubject === 'all'
-                ? 'bg-indigo-600 text-white border-indigo-600'
-                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-            }`}
-          >
-            Semua Mapel
-          </button>
-          {studentSubjects.map((subj) => {
-            const active = selectedSubject.toLowerCase() === subj.toLowerCase();
-            return (
-              <button
-                key={subj}
-                type="button"
-                onClick={() => setSelectedSubject(subj)}
-                className={`px-2.5 py-1 text-xs font-medium rounded-lg border transition-colors ${
-                  active
-                    ? 'bg-indigo-600 text-white border-indigo-600'
-                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                }`}
-              >
-                {subj}
-              </button>
-            );
-          })}
         </div>
       )}
 
@@ -872,9 +796,7 @@ export const StudentPortal: React.FC = () => {
             <h3 className="text-sm font-semibold text-slate-900 flex items-center justify-between gap-2">
               <span>Rekap Nilai Tugas &amp; CBT</span>
               <span className="text-xs font-normal text-slate-500 text-right">
-                {selectedSubject === 'all'
-                  ? (teacherSubjects.join(' · ') || teacher.subject)
-                  : selectedSubject}
+                {teacher.subject || fallbackSubject}
               </span>
             </h3>
 

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLMS } from '../../context/LMSContext';
 import { UploadStudentsModal } from './UploadStudentsModal';
-import { parseSubjects, formatSubjects } from '../../utils/subjects';
 import {
   X,
   Plus,
@@ -65,8 +64,7 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
 
   // Teacher profile state
   const [teacherName, setTeacherName] = useState(teacher.name);
-  const [subjectList, setSubjectList] = useState<string[]>(() => parseSubjects(teacher.subject));
-  const [newSubjectInput, setNewSubjectInput] = useState('');
+  const [teacherSubject, setTeacherSubject] = useState(teacher.subject || '');
   const [nip, setNip] = useState(teacher.nip || '');
   const [kktp, setKktp] = useState(String(teacher.kktp || 75));
   const [profileSaved, setProfileSaved] = useState(false);
@@ -95,8 +93,7 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setTeacherName(teacher.name);
-      setSubjectList(parseSubjects(teacher.subject));
-      setNewSubjectInput('');
+      setTeacherSubject(teacher.subject || '');
       setNip(teacher.nip || '');
       setKktp(String(teacher.kktp || 75));
       setConfirmDeleteAll(false);
@@ -114,41 +111,14 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
     return null;
   }
 
-  const handleAddSubjectTag = () => {
-    const extras = parseSubjects(newSubjectInput);
-    if (extras.length === 0) return;
-    setSubjectList((prev) => {
-      const merged = [...prev];
-      extras.forEach((ex) => {
-        if (!merged.some((m) => m.toLowerCase() === ex.toLowerCase())) {
-          merged.push(ex);
-        }
-      });
-      return merged;
-    });
-    setNewSubjectInput('');
-  };
-
-  const handleRemoveSubjectTag = (target: string) => {
-    setSubjectList((prev) => prev.filter((item) => item !== target));
-  };
-
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
     if (!teacherName.trim()) return;
-    const pendingExtras = parseSubjects(newSubjectInput);
-    const mergedSubjects = [...subjectList];
-    pendingExtras.forEach((ex) => {
-      if (!mergedSubjects.some((m) => m.toLowerCase() === ex.toLowerCase())) {
-        mergedSubjects.push(ex);
-      }
-    });
-    const combinedSubject = formatSubjects(mergedSubjects) || 'Mata Pelajaran';
-    setSubjectList(parseSubjects(combinedSubject));
-    setNewSubjectInput('');
+    const cleanedSubject = teacherSubject.trim() || 'Mata Pelajaran';
+    setTeacherSubject(cleanedSubject);
     updateTeacher({
       name: teacherName.trim(),
-      subject: combinedSubject,
+      subject: cleanedSubject,
       nip: nip.trim() || undefined,
       kktp: parseInt(kktp, 10) || 75,
     });
@@ -357,76 +327,33 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Multi-Subject Free Manager */}
-                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
-                    <div className="flex flex-wrap items-center justify-between gap-1">
-                      <label className="font-medium text-slate-800">
-                        Mata Pelajaran yang Diampu (Bebas &amp; Bisa Lebih dari Satu)
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-medium text-slate-700 mb-1">
+                        Mata Pelajaran yang Diampu
                       </label>
-                      <span className="text-[10px] text-slate-500">
-                        {subjectList.length} mapel terdaftar
-                      </span>
-                    </div>
-
-                    {subjectList.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {subjectList.map((subj) => (
-                          <span
-                            key={subj}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-indigo-200 text-indigo-800 font-semibold text-[11px]"
-                          >
-                            <span>{subj}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveSubjectTag(subj)}
-                              className="text-indigo-400 hover:text-rose-600 transition-colors"
-                              title={`Hapus mapel ${subj}`}
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="flex flex-col sm:flex-row gap-2">
                       <input
                         type="text"
-                        value={newSubjectInput}
-                        onChange={(e) => setNewSubjectInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handleAddSubjectTag();
-                          }
-                        }}
-                        placeholder="Ketik nama mapel bebas (misal: Matematika, Fisika, Informatika)..."
-                        className="flex-1 px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-xs"
+                        value={teacherSubject}
+                        onChange={(e) => setTeacherSubject(e.target.value)}
+                        placeholder="Misal: Biologi, Matematika, dll."
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-xs"
                       />
-                      <button
-                        type="button"
-                        onClick={handleAddSubjectTag}
-                        className="inline-flex items-center justify-center gap-1 px-3 py-2 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors shrink-0"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Tambah Mapel</span>
-                      </button>
                     </div>
-                  </div>
-
-                  <div className="max-w-xs">
-                    <label className="block font-medium text-slate-700 mb-1">
-                      Standar KKTP (Nilai Tuntas)
-                    </label>
-                    <input
-                      type="number"
-                      min="50"
-                      max="100"
-                      required
-                      value={kktp}
-                      onChange={(e) => setKktp(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-xs font-mono"
-                    />
+                    <div>
+                      <label className="block font-medium text-slate-700 mb-1">
+                        Standar KKTP (Nilai Tuntas)
+                      </label>
+                      <input
+                        type="number"
+                        min="50"
+                        max="100"
+                        required
+                        value={kktp}
+                        onChange={(e) => setKktp(e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-xs font-mono"
+                      />
+                    </div>
                   </div>
 
                   <button

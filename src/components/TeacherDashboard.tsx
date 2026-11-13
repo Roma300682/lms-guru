@@ -25,13 +25,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const {
     teacher,
     teacherSubjects,
-    availableSubjects,
     classes,
     students,
     activeClassId,
     setActiveClassId,
-    activeSubject,
-    setActiveSubject,
   } = useLMS();
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [waPrefill, setWaPrefill] = useState<WhatsAppPrefill | null>(null);
@@ -131,51 +128,6 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               <Settings className="w-3.5 h-3.5" />
             </button>
           </div>
-        </div>
-
-        {/* Multi-Subject Filter Strip */}
-        <div className="flex items-center gap-1.5 bg-slate-50/80 px-2 py-1.5 rounded-lg border border-slate-200/80 overflow-x-auto no-scrollbar sm:flex-wrap">
-          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider px-1.5 shrink-0">
-            Mapel:
-          </span>
-
-          <button
-            type="button"
-            onClick={() => setActiveSubject('all')}
-            className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
-              activeSubject === 'all'
-                ? 'bg-white text-indigo-700 shadow-xs border border-slate-200'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Semua Mapel
-          </button>
-
-          {availableSubjects.map((subj) => {
-            const isSelected = activeSubject.toLowerCase() === subj.toLowerCase();
-            return (
-              <button
-                key={subj}
-                type="button"
-                onClick={() => setActiveSubject(subj)}
-                className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
-                  isSelected
-                    ? 'bg-white text-indigo-700 shadow-xs border border-slate-200'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                {subj}
-              </button>
-            );
-          })}
-
-          <button
-            type="button"
-            onClick={onOpenProfile}
-            className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2.5 py-1 rounded-md transition-colors ml-auto whitespace-nowrap shrink-0"
-          >
-            + Atur Mapel
-          </button>
         </div>
       </div>
 

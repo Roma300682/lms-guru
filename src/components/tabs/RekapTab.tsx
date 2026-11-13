@@ -10,6 +10,7 @@ export const RekapTab: React.FC = () => {
   const [subTab, setSubTab] = useState<'nilai' | 'presensi'>('nilai');
   const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
   const [selectedLocalClassId, setSelectedLocalClassId] = useState<string>(classes[0]?.id || '');
+  const [confirmDeleteAttendanceId, setConfirmDeleteAttendanceId] = useState<string | null>(null);
 
   const kktp = typeof teacher.kktp === 'number' ? teacher.kktp : 75;
   const fallbackSubject = getPrimarySubject(teacher.subject);
@@ -394,17 +395,36 @@ export const RekapTab: React.FC = () => {
                         </h4>
                       </div>
 
-                      <button
-                        onClick={() => {
-                          if (confirm('Hapus catatan presensi pertemuan ini?')) {
-                            deleteAttendance(att.id);
-                          }
-                        }}
-                        className="p-1 text-slate-400 hover:text-rose-600 rounded-md transition-colors"
-                        title="Hapus Presensi"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {confirmDeleteAttendanceId === att.id ? (
+                        <div className="inline-flex items-center gap-1 bg-rose-50 border border-rose-200 px-2 py-1 rounded-md shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              deleteAttendance(att.id);
+                              setConfirmDeleteAttendanceId(null);
+                            }}
+                            className="text-[11px] font-semibold text-white bg-rose-600 hover:bg-rose-700 px-2 py-0.5 rounded"
+                          >
+                            Hapus
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteAttendanceId(null)}
+                            className="text-[11px] text-slate-600 hover:text-slate-800 px-1.5 py-0.5"
+                          >
+                            Batal
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteAttendanceId(att.id)}
+                          className="p-1 text-slate-400 hover:text-rose-600 rounded-md transition-colors"
+                          title="Hapus Presensi"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-4 text-xs pt-1 border-t border-slate-100">

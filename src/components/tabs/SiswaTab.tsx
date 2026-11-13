@@ -21,6 +21,7 @@ export const SiswaTab: React.FC = () => {
   );
   const [importNotification, setImportNotification] = useState<string | null>(null);
   const [copiedLinkKey, setCopiedLinkKey] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   // Filter students based on activeClassId
   const filteredByClass =
@@ -347,18 +348,36 @@ export const SiswaTab: React.FC = () => {
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (confirm(`Hapus siswa "${student.name}"?`)) {
-                            deleteStudent(student.id);
-                          }
-                        }}
-                        className="text-slate-400 hover:text-rose-600 p-1.5 rounded-md hover:bg-rose-50 transition-colors shrink-0"
-                        title="Hapus Siswa"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {confirmDeleteId === student.id ? (
+                        <div className="inline-flex items-center gap-1 bg-rose-50 border border-rose-200 px-1.5 py-1 rounded-md shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              deleteStudent(student.id);
+                              setConfirmDeleteId(null);
+                            }}
+                            className="text-[11px] font-semibold text-white bg-rose-600 hover:bg-rose-700 px-2 py-0.5 rounded"
+                          >
+                            Hapus
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="text-[11px] text-slate-600 px-1.5 py-0.5"
+                          >
+                            Batal
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(student.id)}
+                          className="text-slate-400 hover:text-rose-600 p-1.5 rounded-md hover:bg-rose-50 transition-colors shrink-0"
+                          title="Hapus Siswa"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
 
                     {isEditingThisWa ? (
@@ -549,18 +568,36 @@ export const SiswaTab: React.FC = () => {
                         </div>
                       </td>
                       <td className="py-2.5 px-4 text-center">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (confirm(`Hapus siswa "${student.name}"?`)) {
-                              deleteStudent(student.id);
-                            }
-                          }}
-                          className="text-slate-400 hover:text-rose-600 p-1 rounded-md hover:bg-rose-50 transition-colors"
-                          title="Hapus Siswa"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {confirmDeleteId === student.id ? (
+                          <div className="inline-flex items-center gap-1 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                deleteStudent(student.id);
+                                setConfirmDeleteId(null);
+                              }}
+                              className="text-[10px] font-semibold text-white bg-rose-600 hover:bg-rose-700 px-1.5 py-0.5 rounded"
+                            >
+                              Hapus
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="text-[10px] text-slate-600 px-1 py-0.5"
+                            >
+                              Batal
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(student.id)}
+                            className="text-slate-400 hover:text-rose-600 p-1 rounded-md hover:bg-rose-50 transition-colors"
+                            title="Hapus Siswa"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

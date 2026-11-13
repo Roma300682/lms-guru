@@ -9,7 +9,7 @@ interface AttendanceModalProps {
 }
 
 export const AttendanceModal: React.FC<AttendanceModalProps> = ({ isOpen, onClose }) => {
-  const { classes, students, activeClassId, activeSubject, availableSubjects, teacherSubjects, addClass, setActiveClassId, saveAttendance } = useLMS();
+  const { classes, students, activeClassId, activeSubject, teacherSubjects, addClass, setActiveClassId, saveAttendance } = useLMS();
 
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [classId, setClassId] = useState(activeClassId === 'all' ? classes[0]?.id || 'c1' : activeClassId);
@@ -171,7 +171,7 @@ export const AttendanceModal: React.FC<AttendanceModalProps> = ({ isOpen, onClos
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Mata Pelajaran (Bebas)
+                  Mata Pelajaran
                 </label>
                 <input
                   type="text"
@@ -180,24 +180,6 @@ export const AttendanceModal: React.FC<AttendanceModalProps> = ({ isOpen, onClos
                   placeholder="Misal: Biologi, Kimia, dll."
                   className="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                 />
-                {availableSubjects.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-1.5">
-                    {availableSubjects.map((subj) => (
-                      <button
-                        key={subj}
-                        type="button"
-                        onClick={() => setSubject(subj)}
-                        className={`px-2 py-0.5 text-[10px] font-medium rounded border transition-colors ${
-                          subject.trim().toLowerCase() === subj.toLowerCase()
-                            ? 'bg-indigo-50 text-indigo-700 border-indigo-200 font-semibold'
-                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                        }`}
-                      >
-                        {subj}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
 
               <div>
