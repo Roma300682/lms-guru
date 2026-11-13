@@ -154,6 +154,7 @@ interface LMSContextType {
   // CBT Exam & Results Actions
   addCbtExam: (exam: Omit<CbtExam, 'id' | 'createdAt'>) => string | null;
   toggleCbtExamActive: (id: string, isActive: boolean) => void;
+  stopAllActiveCbtExams: () => void;
   deleteCbtExam: (id: string) => void;
   submitCbtAttempt: (attempt: Omit<CbtAttempt, 'id' | 'submittedAt'>) => CbtAttempt;
   gradeCbtAttempt: (
@@ -2894,6 +2895,30 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }).catch((err) => handleFirestoreError(err, OperationType.UPDATE, `cbtExams/${id}`));
   };
 
+  const stopAllActiveCbtExams = () => {
+    if (!isAuthorizedTeacher) return;
+    const activeIds = cbtExams.filter((ex) => ex.isActive).map((ex) => ex.id);
+    if (activeIds.length === 0) return;
+
+    setCbtExams((prev) => prev.map((ex) => (ex.isActive ? { ...ex, isActive: false } : ex)));
+
+    const runStopAll = async () => {
+      try {
+        const batch = writeBatch(db);
+        activeIds.forEach((eid) => {
+          batch.update(doc(db, 'cbtExams', eid), {
+            isActive: false,
+            updatedAt: serverTimestamp(),
+          });
+        });
+        await batch.commit();
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, 'cbtExams');
+      }
+    };
+    void runStopAll();
+  };
+
   const deleteCbtExam = (id: string) => {
     if (!isAuthorizedTeacher) return;
     const removedAttemptIds = cbtResults.filter((r) => r.examId === id).map((r) => r.id);
@@ -3256,6 +3281,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteQuestionSet,
         addCbtExam,
         toggleCbtExamActive,
+        stopAllActiveCbtExams,
         deleteCbtExam,
         submitCbtAttempt,
         gradeCbtAttempt,

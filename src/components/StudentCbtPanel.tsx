@@ -12,6 +12,7 @@ import {
   AlertCircle,
   Play,
   Eye,
+  StopCircle,
 } from 'lucide-react';
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D'] as const;
@@ -47,11 +48,14 @@ export const StudentCbtPanel: React.FC<StudentCbtPanelProps> = ({
   const [essayAnswers, setEssayAnswers] = useState<Record<string, string>>({});
   const [remainingSec, setRemainingSec] = useState<number>(0);
   const [confirmSubmitOpen, setConfirmSubmitOpen] = useState<boolean>(false);
+  const [confirmStopOpen, setConfirmStopOpen] = useState<boolean>(false);
+  const [stopNotice, setStopNotice] = useState<string>('');
 
   // Instant Result Review State
   const [reviewState, setReviewState] = useState<{
     exam: CbtExam;
     attempt: CbtAttempt;
+    stoppedReason?: 'teacher' | 'student' | 'timeout';
   } | null>(null);
 
   const startedAtRef = useRef<number>(0);
@@ -75,20 +79,22 @@ export const StudentCbtPanel: React.FC<StudentCbtPanelProps> = ({
   }, [activeExam]);
 
   const startExam = (exam: CbtExam) => {
-    if (!student) return;
+    if (!student || !exam.isActive) return;
     setActiveExam(exam);
     setReviewState(null);
+    setStopNotice('');
     setCurrentIdx(0);
     setPgAnswers({});
     setEssayAnswers({});
     setRemainingSec(exam.durationMinutes * 60);
     setConfirmSubmitOpen(false);
+    setConfirmStopOpen(false);
     startedAtRef.current = Date.now();
     hasSubmittedRef.current = false;
   };
 
-  const finalizeSubmit = useRef<() => void>(() => {});
-  finalizeSubmit.current = () => {
+  const finalizeSubmit = useRef<(reason?: 'teacher' | 'student' | 'timeout') => void>(() => {});
+  finalizeSubmit.current = (reason?: 'teacher' | 'student' | 'timeout') => {
     if (!activeExam || !student || hasSubmittedRef.current) return;
     hasSubmittedRef.current = true;
 
@@ -126,8 +132,25 @@ export const StudentCbtPanel: React.FC<StudentCbtPanelProps> = ({
     const completedExam = activeExam;
     setActiveExam(null);
     setConfirmSubmitOpen(false);
-    setReviewState({ exam: completedExam, attempt: savedAttempt });
+    setConfirmStopOpen(false);
+    setReviewState({ exam: completedExam, attempt: savedAttempt, stoppedReason: reason });
   };
+
+  // Real-time force-stop if teacher stops/closes or deletes the active CBT exam
+  useEffect(() => {
+    if (!activeExam) return;
+    const latest = exams.find((e) => e.id === activeExam.id);
+    if (!latest) {
+      setActiveExam(null);
+      setConfirmSubmitOpen(false);
+      setConfirmStopOpen(false);
+      setStopNotice(`Ujian CBT "${activeExam.title}" telah dihapus atau dihentikan oleh guru.`);
+      return;
+    }
+    if (!latest.isActive) {
+      finalizeSubmit.current('teacher');
+    }
+  }, [exams, activeExam]);
 
   // Countdown tick while activeExam is open
   useEffect(() => {
@@ -136,7 +159,7 @@ export const StudentCbtPanel: React.FC<StudentCbtPanelProps> = ({
       setRemainingSec((prev) => {
         if (prev <= 1) {
           window.clearInterval(timer);
-          finalizeSubmit.current();
+          finalizeSubmit.current('timeout');
           return 0;
         }
         return prev - 1;
@@ -150,6 +173,8 @@ export const StudentCbtPanel: React.FC<StudentCbtPanelProps> = ({
     setActiveExam(null);
     setReviewState(null);
     setConfirmSubmitOpen(false);
+    setConfirmStopOpen(false);
+    setStopNotice('');
   }, [student?.id]);
 
   // =========================================================================
@@ -192,18 +217,69 @@ export const StudentCbtPanel: React.FC<StudentCbtPanelProps> = ({
               Terjawab {answeredCount}/{totalCount}
             </div>
 
-            {!confirmSubmitOpen && (
-              <button
-                type="button"
-                onClick={() => setConfirmSubmitOpen(true)}
-                className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-xs transition-colors"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>Selesaikan &amp; Lihat Hasil</span>
-              </button>
+            {!confirmSubmitOpen && !confirmStopOpen && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmStopOpen(true);
+                    setConfirmSubmitOpen(false);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors"
+                >
+                  <StopCircle className="w-3.5 h-3.5" />
+                  <span>Hentikan Ujian</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmSubmitOpen(true);
+                    setConfirmStopOpen(false);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-xs transition-colors"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Selesaikan &amp; Lihat Hasil</span>
+                </button>
+              </>
             )}
           </div>
         </div>
+
+        {/* Inline Stop Exam Confirmation Bar */}
+        {confirmStopOpen && (
+          <div className="p-4 rounded-xl bg-rose-50 border border-rose-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="text-xs text-rose-950 space-y-0.5">
+              <div className="font-bold flex items-center gap-1.5">
+                <StopCircle className="w-4 h-4 text-rose-600" />
+                <span>Hentikan Ujian CBT Sekarang?</span>
+              </div>
+              <div>
+                Jika dihentikan, pengerjaan langsung berakhir dan{' '}
+                <strong className="font-mono tabular-nums">
+                  {answeredCount} dari {totalCount}
+                </strong>{' '}
+                jawaban yang sudah terisi akan otomatis dikumpulkan ke Ruang Guru.
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => finalizeSubmit.current('student')}
+                className="px-4 py-1.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-xs"
+              >
+                Ya, Hentikan &amp; Kumpulkan
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmStopOpen(false)}
+                className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg"
+              >
+                Lanjutkan Mengerjakan
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Inline Submit Confirmation Bar */}
         {confirmSubmitOpen && (
@@ -423,6 +499,19 @@ export const StudentCbtPanel: React.FC<StudentCbtPanelProps> = ({
             <span>Kembali ke Daftar Ujian CBT</span>
           </button>
         </div>
+
+        {reviewState.stoppedReason && (
+          <div className="flex items-center gap-2.5 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
+            <StopCircle className="w-4 h-4 text-amber-700 shrink-0" />
+            <span>
+              {reviewState.stoppedReason === 'teacher'
+                ? 'Ujian CBT ini telah dihentikan oleh guru. Seluruh jawaban yang sudah Anda isi otomatis dikumpulkan ke Ruang Guru.'
+                : reviewState.stoppedReason === 'timeout'
+                ? 'Waktu ujian CBT telah habis. Jawaban Anda otomatis dikumpulkan.'
+                : 'Anda telah menghentikan ujian CBT. Jawaban yang sudah terisi telah dikumpulkan ke Ruang Guru.'}
+            </span>
+          </div>
+        )}
 
         {/* Hero Result Summary Card */}
         <div className="bg-white rounded-xl border border-slate-200 p-5 sm:p-6 space-y-5 shadow-xs">
@@ -651,6 +740,21 @@ export const StudentCbtPanel: React.FC<StudentCbtPanelProps> = ({
   // =========================================================================
   return (
     <div className="space-y-4">
+      {stopNotice && (
+        <div className="flex items-center justify-between gap-2 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800">
+          <div className="flex items-center gap-2">
+            <StopCircle className="w-4 h-4 shrink-0 text-rose-600" />
+            <span>{stopNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setStopNotice('')}
+            className="text-[11px] font-semibold text-rose-700 hover:underline shrink-0"
+          >
+            Tutup
+          </button>
+        </div>
+      )}
       {exams.length === 0 ? (
         <div className="bg-white rounded-xl border border-slate-200 p-12 text-center space-y-2">
           <MonitorCheck className="w-9 h-9 text-slate-300 mx-auto" />
@@ -716,8 +820,9 @@ export const StudentCbtPanel: React.FC<StudentCbtPanelProps> = ({
                       Ujian Dibuka
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-600 bg-slate-100 border border-slate-200">
-                      Sesi Ditutup Guru
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200">
+                      <StopCircle className="w-3.5 h-3.5" />
+                      Ujian Dihentikan Guru
                     </span>
                   )}
                 </div>
