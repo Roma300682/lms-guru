@@ -153,8 +153,21 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({
     deleteQuestionSet,
   } = useLMS();
 
+  const resolveTargetClassId = () => {
+    if (activeClassId && activeClassId !== 'all' && classes.some((c) => c.id === activeClassId)) {
+      return activeClassId;
+    }
+    return classes[0]?.id || 'all';
+  };
+
+  const resolveClassSubject = (classId: string) => {
+    const clsSubj = classes.find((c) => c.id === classId)?.subject?.trim();
+    if (clsSubj) return clsSubj;
+    return activeSubject !== 'all' ? activeSubject : getPrimarySubject(teacher.subject);
+  };
+
   const [questionSubject, setQuestionSubject] = useState<string>(() =>
-    activeSubject !== 'all' ? activeSubject : getPrimarySubject(teacher.subject)
+    resolveClassSubject(resolveTargetClassId())
   );
   const [uraianMateri, setUraianMateri] = useState('');
   const [pgCount, setPgCount] = useState<number>(10);
@@ -172,7 +185,7 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({
 
   // Share to Task inline drawer
   const [isShareOpen, setIsShareOpen] = useState(false);
-  const [shareClassId, setShareClassId] = useState<string>(activeClassId || 'all');
+  const [shareClassId, setShareClassId] = useState<string>(() => resolveTargetClassId());
   const [shareDueDate, setShareDueDate] = useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() + 3);
@@ -182,7 +195,7 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({
 
   // Publish to Online CBT inline drawer
   const [isCbtOpen, setIsCbtOpen] = useState(false);
-  const [cbtClassId, setCbtClassId] = useState<string>(activeClassId || 'all');
+  const [cbtClassId, setCbtClassId] = useState<string>(() => resolveTargetClassId());
   const [cbtDurationMinutes, setCbtDurationMinutes] = useState<number>(45);
   const [cbtEssayWeight, setCbtEssayWeight] = useState<number>(30);
   const [cbtShowResult, setCbtShowResult] = useState<boolean>(true);
@@ -197,17 +210,24 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({
   }, [savedSets, activeSetId]);
 
   useEffect(() => {
-    setShareClassId(activeClassId || 'all');
-    setCbtClassId(activeClassId || 'all');
-  }, [activeClassId]);
+    const nextClass =
+      activeClassId && activeClassId !== 'all' && classes.some((c) => c.id === activeClassId)
+        ? activeClassId
+        : (classes[0]?.id || 'all');
+    setShareClassId(nextClass);
+    setCbtClassId(nextClass);
+  }, [activeClassId, classes]);
 
   useEffect(() => {
-    if (activeSubject !== 'all') {
+    const activeCls = activeClassId !== 'all' ? classes.find((c) => c.id === activeClassId) : undefined;
+    if (activeCls?.subject?.trim()) {
+      setQuestionSubject(activeCls.subject.trim());
+    } else if (activeSubject !== 'all') {
       setQuestionSubject(activeSubject);
     } else {
       setQuestionSubject((prev) => prev || getPrimarySubject(teacher.subject));
     }
-  }, [activeSubject, teacher.subject]);
+  }, [activeClassId, classes, activeSubject, teacher.subject]);
 
   const activeSet = savedSets.find((s) => s.id === activeSetId) || null;
   const activeCbtForSet = activeSet
@@ -514,12 +534,18 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({
       });
     }
 
+    const targetTaskClass = shareClassId || classes[0]?.id || 'all';
+    const targetTaskSubject =
+      targetTaskClass !== 'all'
+        ? classes.find((c) => c.id === targetTaskClass)?.subject?.trim() || activeSet.subject
+        : activeSet.subject;
+
     addTask({
       title: activeSet.title,
-      subject: activeSet.subject,
+      subject: targetTaskSubject,
       instructions: previewLines.join('\n'),
       dueDate: shareDueDate,
-      classId: shareClassId || 'all',
+      classId: targetTaskClass,
       attachment,
     });
 
@@ -535,11 +561,16 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({
         : activeSet.multipleChoice.length === 0
         ? 100
         : cbtEssayWeight;
+    const targetCbtClass = cbtClassId || classes[0]?.id || 'all';
+    const targetCbtSubject =
+      targetCbtClass !== 'all'
+        ? classes.find((c) => c.id === targetCbtClass)?.subject?.trim() || activeSet.subject
+        : activeSet.subject;
     const examId = addCbtExam({
       questionSetId: activeSet.id,
       title: activeSet.title,
-      subject: activeSet.subject,
-      classId: cbtClassId || 'all',
+      subject: targetCbtSubject,
+      classId: targetCbtClass,
       durationMinutes: Math.min(240, Math.max(1, Math.trunc(cbtDurationMinutes || 45))),
       showResultToStudent: cbtShowResult,
       essayWeight: resolvedEssayWeight,
@@ -964,12 +995,12 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({
                           onChange={(e) => setCbtClassId(e.target.value)}
                           className="w-full text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white"
                         >
-                          <option value="all">Semua Kelas</option>
                           {classes.map((c) => (
                             <option key={c.id} value={c.id}>
-                              {c.name}
+                              {c.name}{c.subject?.trim() ? ` · ${c.subject.trim()}` : ''}
                             </option>
                           ))}
+                          <option value="all">Semua Kelas</option>
                         </select>
                       </div>
                       <div>
@@ -1127,12 +1158,12 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({
                           onChange={(e) => setShareClassId(e.target.value)}
                           className="w-full text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white"
                         >
-                          <option value="all">Semua Kelas</option>
                           {classes.map((c) => (
                             <option key={c.id} value={c.id}>
-                              {c.name}
+                              {c.name}{c.subject?.trim() ? ` · ${c.subject.trim()}` : ''}
                             </option>
                           ))}
+                          <option value="all">Semua Kelas</option>
                         </select>
                       </div>
                       <div>

@@ -12,21 +12,23 @@ interface AddTaskModalProps {
 export const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose }) => {
   const { classes, addTask, activeClassId, setActiveClassId, activeSubject, teacherSubjects } = useLMS();
 
+  const initialClass =
+    activeClassId && activeClassId !== 'all' && classes.some((c) => c.id === activeClassId)
+      ? activeClassId
+      : (classes[0]?.id || 'all');
+
   const [title, setTitle] = useState('');
-  const [subject, setSubject] = useState(
-    activeSubject !== 'all' ? activeSubject : (teacherSubjects[0] || '')
-  );
+  const [targetClass, setTargetClass] = useState(initialClass);
+  const [subject, setSubject] = useState(() => {
+    const clsSubj = classes.find((c) => c.id === initialClass)?.subject?.trim();
+    return clsSubj || (activeSubject !== 'all' ? activeSubject : (teacherSubjects[0] || ''));
+  });
   const [instructions, setInstructions] = useState('');
   const [dueDate, setDueDate] = useState(() => {
     const nextWeek = new Date();
     nextWeek.setDate(nextWeek.getDate() + 7);
     return nextWeek.toISOString().split('T')[0];
   });
-  const [targetClass, setTargetClass] = useState(() =>
-    activeClassId && activeClassId !== 'all' && classes.some((c) => c.id === activeClassId)
-      ? activeClassId
-      : 'all'
-  );
 
   // File soal / LKPD attachment state
   const [attachment, setAttachment] = useState<MaterialAttachment | null>(null);
@@ -34,15 +36,16 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose }) =
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync targetClass & default subject whenever modal opens
+  // Sync targetClass & per-class subject whenever modal opens
   React.useEffect(() => {
     if (isOpen) {
-      if (activeClassId && activeClassId !== 'all' && classes.some((c) => c.id === activeClassId)) {
-        setTargetClass(activeClassId);
-      } else {
-        setTargetClass('all');
-      }
-      setSubject(activeSubject !== 'all' ? activeSubject : (teacherSubjects[0] || ''));
+      const nextClass =
+        activeClassId && activeClassId !== 'all' && classes.some((c) => c.id === activeClassId)
+          ? activeClassId
+          : (classes[0]?.id || 'all');
+      setTargetClass(nextClass);
+      const clsSubj = classes.find((c) => c.id === nextClass)?.subject?.trim();
+      setSubject(clsSubj || (activeSubject !== 'all' ? activeSubject : (teacherSubjects[0] || '')));
     }
   }, [isOpen, activeClassId, classes, activeSubject, teacherSubjects]);
 
@@ -183,15 +186,22 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose }) =
               </label>
               <select
                 value={targetClass}
-                onChange={(e) => setTargetClass(e.target.value)}
+                onChange={(e) => {
+                  const nextId = e.target.value;
+                  setTargetClass(nextId);
+                  if (nextId !== 'all') {
+                    const clsSubj = classes.find((c) => c.id === nextId)?.subject?.trim();
+                    if (clsSubj) setSubject(clsSubj);
+                  }
+                }}
                 className="w-full text-sm px-3.5 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 bg-white"
               >
-                <option value="all">Semua Kelas yang Diampu</option>
                 {classes.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name}
+                    {c.name}{c.subject?.trim() ? ` · ${c.subject.trim()}` : ''}
                   </option>
                 ))}
+                <option value="all">Semua Kelas (Mapel Sama)</option>
               </select>
             </div>
           </div>

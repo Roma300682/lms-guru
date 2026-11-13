@@ -54,18 +54,26 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
   const studentClass = classes.find((c) => c.id === student?.classId);
 
   const fallbackSubject = getPrimarySubject(teacher.subject);
+  const classSubject = studentClass?.subject?.trim() || fallbackSubject;
 
-  // Materials, tasks, attendance & CBT exams matching the student's class
-  const studentMaterials = materials.filter(
-    (m) => m.classId === 'all' || (student && m.classId === student.classId)
-  );
-  const studentTasks = tasks.filter(
-    (t) => t.classId === 'all' || (student && t.classId === student.classId)
-  );
+  const matchesStudentScope = (itemClassId: string, itemSubject?: string) => {
+    if (student && itemClassId === student.classId) return true;
+    if (itemClassId === 'all') {
+      const clsSubj = studentClass?.subject?.trim();
+      const itSubj = itemSubject?.trim();
+      if (clsSubj && itSubj) {
+        return clsSubj.toLowerCase() === itSubj.toLowerCase();
+      }
+      return true;
+    }
+    return false;
+  };
+
+  // Materials, tasks, attendance & CBT exams matching the student's class & separated subject
+  const studentMaterials = materials.filter((m) => matchesStudentScope(m.classId, m.subject));
+  const studentTasks = tasks.filter((t) => matchesStudentScope(t.classId, t.subject));
   const studentAttendance = attendance.filter((a) => a.classId === student?.classId);
-  const studentCbtExams = cbtExams.filter(
-    (ex) => ex.classId === 'all' || (student && ex.classId === student.classId)
-  );
+  const studentCbtExams = cbtExams.filter((ex) => matchesStudentScope(ex.classId, ex.subject));
 
   // Task answer submission form state
   const [submittingTaskId, setSubmittingTaskId] = useState<string | null>(null);
@@ -293,13 +301,13 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
       <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="text-xs text-indigo-600 font-semibold tracking-wide uppercase">
-            Portal Belajar Siswa · {teacher.subject || fallbackSubject}
+            Portal Belajar Siswa · {classSubject}
           </div>
           <h2 className="text-lg font-bold text-slate-900">
             Halo, {student ? student.name : 'Siswa'}!
           </h2>
           <p className="text-xs text-slate-500">
-            {studentClass?.name || 'Kelas'} · Guru Pengampu: {teacher.name}
+            {studentClass?.name || 'Kelas'} · Mapel: <strong className="text-slate-700">{classSubject}</strong> · Guru: {teacher.name}
           </p>
         </div>
 
@@ -405,6 +413,22 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
                   >
                     Batal
                   </button>
+                  {(student.whatsapp || student.phoneHash) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateStudent(student.id, { whatsapp: '' });
+                        setIsEditingWa(false);
+                        setWaDraft('');
+                        setWaError('');
+                        setWaSavedBanner(true);
+                        setTimeout(() => setWaSavedBanner(false), 3000);
+                      }}
+                      className="px-2.5 py-1.5 text-xs font-medium text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg"
+                    >
+                      Hapus No. HP
+                    </button>
+                  )}
                   {waError && (
                     <span className="text-[11px] text-rose-600 w-full">{waError}</span>
                   )}
@@ -884,7 +908,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
           exams={studentCbtExams}
           results={cbtResults}
           kktp={typeof teacher.kktp === 'number' ? teacher.kktp : 75}
-          fallbackSubject={fallbackSubject}
+          fallbackSubject={classSubject}
           onSubmitAttempt={submitCbtAttempt}
         />
       )}
@@ -897,7 +921,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
             <h3 className="text-sm font-semibold text-slate-900 flex items-center justify-between gap-2">
               <span>Rekap Nilai Tugas &amp; CBT</span>
               <span className="text-xs font-normal text-slate-500 text-right">
-                {teacher.subject || fallbackSubject}
+                {classSubject}
               </span>
             </h3>
 
@@ -920,7 +944,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
                           {exam.title}
                         </span>
                         <span className="text-[10px] text-emerald-700 font-medium">
-                          {exam.subject || fallbackSubject} · CBT
+                          {exam.subject || classSubject} · CBT
                         </span>
                       </div>
                       <span className="font-mono font-bold text-slate-900 shrink-0 ml-2">

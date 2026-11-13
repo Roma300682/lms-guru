@@ -111,8 +111,8 @@ interface LMSContextType {
   updateTeacher: (profile: Partial<TeacherProfile>) => void;
 
   // Class & Student Actions
-  addClass: (name: string) => string | null;
-  updateClass: (id: string, patch: Partial<Pick<ClassRoom, 'name' | 'whatsappGroupUrl'>>) => void;
+  addClass: (name: string, subject?: string) => string | null;
+  updateClass: (id: string, patch: Partial<Pick<ClassRoom, 'name' | 'subject' | 'whatsappGroupUrl'>>) => void;
   deleteClass: (id: string) => void;
   deleteAllClasses: () => void;
   addStudent: (name: string, classId: string, whatsapp?: string) => void;
@@ -715,9 +715,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           visibility: 'classroom',
           updatedAt: serverTimestamp(),
         };
+        if (cls.subject?.trim()) baseCls.subject = clampStr(cls.subject.trim(), 120);
         if (cls.whatsappGroupUrl) baseCls.whatsappGroupUrl = clampStr(cls.whatsappGroupUrl, 300);
 
         if (exists) {
+          if (!cls.subject?.trim()) baseCls.subject = deleteField();
           phase1Ops.push({ mode: 'update', ref: doc(db, 'classes', cid), data: baseCls });
         } else {
           phase1Ops.push({
@@ -1070,6 +1072,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return {
               id: docSnap.id,
               name: d.name || '',
+              subject: typeof d.subject === 'string' && d.subject.trim() ? d.subject.trim() : undefined,
               whatsappGroupUrl: d.whatsappGroupUrl || undefined,
             };
           });
@@ -1977,21 +1980,28 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  const addClass = (name: string): string | null => {
+  const addClass = (name: string, subject?: string): string | null => {
     if (!isAuthorizedTeacher || !firebaseUser || !name.trim()) return null;
+    const cleanSubject = subject?.trim() ? clampStr(subject.trim(), 120) : undefined;
     const newClass: ClassRoom = {
       id: 'c_' + Date.now(),
       name: clampStr(name.trim(), 80),
+      ...(cleanSubject ? { subject: cleanSubject } : {}),
     };
     setClasses((prev) => [...prev, newClass]);
 
-    const writePromise = setDoc(doc(db, 'classes', newClass.id), {
+    const docPayload: Record<string, unknown> = {
       name: newClass.name,
       visibility: 'classroom',
       ownerUid: firebaseUser.uid,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-    })
+    };
+    if (cleanSubject) {
+      docPayload.subject = cleanSubject;
+    }
+
+    const writePromise = setDoc(doc(db, 'classes', newClass.id), docPayload)
       .then(() => {
         cloudIdsRef.current.classes.add(newClass.id);
       })
@@ -2004,14 +2014,35 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newClass.id;
   };
 
-  const updateClass = (id: string, patch: Partial<Pick<ClassRoom, 'name' | 'whatsappGroupUrl'>>) => {
+  const updateClass = (id: string, patch: Partial<Pick<ClassRoom, 'name' | 'subject' | 'whatsappGroupUrl'>>) => {
     if (!isAuthorizedTeacher) return;
-    setClasses((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+    setClasses((prev) =>
+      prev.map((c) => {
+        if (c.id !== id) return c;
+        const nextSubject =
+          'subject' in patch ? (patch.subject?.trim() || undefined) : c.subject;
+        const nextWa =
+          'whatsappGroupUrl' in patch
+            ? patch.whatsappGroupUrl?.trim() || undefined
+            : c.whatsappGroupUrl;
+        return {
+          ...c,
+          ...(patch.name !== undefined ? { name: patch.name.trim() || 'Kelas' } : {}),
+          subject: nextSubject,
+          whatsappGroupUrl: nextWa,
+        };
+      })
+    );
 
     const payload: Record<string, unknown> = { updatedAt: serverTimestamp() };
     if (patch.name !== undefined) payload.name = clampStr(patch.name.trim() || 'Kelas', 80);
-    if (patch.whatsappGroupUrl !== undefined) {
-      payload.whatsappGroupUrl = patch.whatsappGroupUrl.trim()
+    if ('subject' in patch) {
+      payload.subject = patch.subject?.trim()
+        ? clampStr(patch.subject.trim(), 120)
+        : deleteField();
+    }
+    if ('whatsappGroupUrl' in patch) {
+      payload.whatsappGroupUrl = patch.whatsappGroupUrl?.trim()
         ? clampStr(patch.whatsappGroupUrl.trim(), 300)
         : deleteField();
     }
@@ -2147,12 +2178,30 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateStudent = (id: string, patch: Partial<Pick<Student, 'name' | 'classId' | 'whatsapp'>>) => {
     if (isAuthorizedTeacher && firebaseUser && firebaseUser.emailVerified) {
+      const hasWaPatch = 'whatsapp' in patch;
+      const cleanWaImmediate = hasWaPatch ? clampStr((patch.whatsapp || '').trim(), 30) : '';
+
       setStudentsRoster((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, ...patch } : s))
+        prev.map((s) => {
+          if (s.id !== id) return s;
+          return {
+            ...s,
+            ...(patch.name !== undefined ? { name: patch.name } : {}),
+            ...(patch.classId !== undefined ? { classId: patch.classId } : {}),
+            ...(hasWaPatch
+              ? {
+                  whatsapp: cleanWaImmediate || undefined,
+                  ...(cleanWaImmediate ? {} : { phoneHash: undefined }),
+                }
+              : {}),
+          };
+        })
       );
-      if (patch.whatsapp !== undefined) {
-        const cleanWa = patch.whatsapp.trim();
-        setStudentContacts((prev) => ({ ...prev, [id]: cleanWa }));
+      if (hasWaPatch) {
+        setStudentContacts((prev) => ({ ...prev, [id]: cleanWaImmediate }));
+        if (!cleanWaImmediate) {
+          delete backfilledPhoneHashesRef.current[id];
+        }
       }
       const runTeacherUpdate = async () => {
         try {
@@ -2166,26 +2215,41 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             stuPatch.classId = patch.classId;
             hasStuPatch = true;
           }
-          if (patch.whatsapp !== undefined) {
-            const cleanWa = clampStr(patch.whatsapp.trim(), 30);
+          if (hasWaPatch) {
+            const cleanWa = cleanWaImmediate;
             const computedHash = cleanWa ? await hashStudentPhone(cleanWa) : '';
             stuPatch.phoneHash = computedHash || deleteField();
+            if (!cleanWa) {
+              stuPatch.claimedByUid = deleteField();
+              delete studentClaimedMapRef.current[id];
+            }
             hasStuPatch = true;
             setStudentsRoster((prev) =>
-              prev.map((s) => (s.id === id ? { ...s, phoneHash: computedHash || undefined } : s))
+              prev.map((s) =>
+                s.id === id
+                  ? { ...s, phoneHash: computedHash || undefined, whatsapp: cleanWa || undefined }
+                  : s
+              )
             );
             const ownerUid = studentOwnerMapRef.current[id] || firebaseUser.uid;
-            await setDoc(
-              doc(db, 'students', id, 'private', 'contact'),
-              {
-                whatsapp: cleanWa,
-                ownerUid,
-                updatedAt: serverTimestamp(),
-              },
-              { merge: true }
-            ).catch((err) =>
-              handleFirestoreError(err, OperationType.WRITE, `students/${id}/private/contact`)
-            );
+            if (cleanWa) {
+              await setDoc(
+                doc(db, 'students', id, 'private', 'contact'),
+                {
+                  whatsapp: cleanWa,
+                  ownerUid,
+                  updatedAt: serverTimestamp(),
+                },
+                { merge: true }
+              ).catch((err) =>
+                handleFirestoreError(err, OperationType.WRITE, `students/${id}/private/contact`)
+              );
+            } else {
+              cloudIdsRef.current.contacts.delete(id);
+              await deleteDoc(doc(db, 'students', id, 'private', 'contact')).catch((err) =>
+                handleFirestoreError(err, OperationType.DELETE, `students/${id}/private/contact`)
+              );
+            }
           }
           if (hasStuPatch) {
             await updateDoc(doc(db, 'students', id), stuPatch).catch((err) =>

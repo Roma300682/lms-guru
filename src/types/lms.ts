@@ -11,6 +11,7 @@ export interface Student {
 export interface ClassRoom {
   id: string;
   name: string; // misal: "Kelas X-1"
+  subject?: string; // Mata pelajaran khusus untuk kelas ini agar tidak tergabung dengan kelas lain
   whatsappGroupUrl?: string; // Link undangan Grup WhatsApp kelas (opsional)
 }
 

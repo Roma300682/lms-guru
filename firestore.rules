@@ -87,8 +87,9 @@ service cloud.firestore {
 
     function isValidClassRoom(data) {
       return data.keys().hasAll(['name', 'visibility', 'ownerUid', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['name', 'whatsappGroupUrl', 'visibility', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['name', 'subject', 'whatsappGroupUrl', 'visibility', 'ownerUid', 'createdAt', 'updatedAt'])
         && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
+        && (!('subject' in data) || (data.subject is string && data.subject.size() <= 120))
         && (!('whatsappGroupUrl' in data) || (data.whatsappGroupUrl is string && data.whatsappGroupUrl.size() <= 300))
         && data.visibility == 'classroom'
         && isValidId(data.ownerUid)
@@ -327,7 +328,7 @@ service cloud.firestore {
         && incoming().ownerUid == existing().ownerUid
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time
-        && diffKeys().hasOnly(['name', 'whatsappGroupUrl', 'visibility', 'updatedAt']);
+        && diffKeys().hasOnly(['name', 'subject', 'whatsappGroupUrl', 'visibility', 'updatedAt']);
       allow delete: if isValidId(classId) && isAdmin();
     }
 

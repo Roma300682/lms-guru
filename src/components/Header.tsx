@@ -17,7 +17,8 @@ export const Header: React.FC<HeaderProps> = ({
     viewMode,
     setViewMode,
     teacher,
-    teacherSubjects,
+    classes,
+    activeClassId,
     activeSubject,
     authSession,
     isCloudAdmin,
@@ -27,16 +28,23 @@ export const Header: React.FC<HeaderProps> = ({
     currentStudentId,
   } = useLMS();
 
-  const subjectSummary =
-    activeSubject !== 'all'
-      ? activeSubject
-      : teacherSubjects.length > 0
-      ? teacherSubjects.join(' · ')
-      : teacher.subject;
-
   const currentStudent = students.find((s) => s.id === currentStudentId);
+  const studentClass = classes.find((c) => c.id === currentStudent?.classId);
+  const activeClass = activeClassId !== 'all' ? classes.find((c) => c.id === activeClassId) : undefined;
+  const fallbackSubject = teacher.subject?.split(',')[0]?.trim() || 'Mata Pelajaran';
+
   const canAccessTeacherView = authSession?.role === 'teacher' && isCloudAdmin && isCloudConnected;
   const isTeacherView = viewMode === 'teacher' && canAccessTeacherView;
+
+  const subjectSummary = !isTeacherView
+    ? studentClass?.subject?.trim() || fallbackSubject
+    : activeClass
+    ? `${activeClass.name} · ${activeClass.subject?.trim() || fallbackSubject}`
+    : activeSubject !== 'all'
+    ? activeSubject
+    : classes.length > 0
+    ? `${classes.length} Rombel Kelas`
+    : fallbackSubject;
 
   return (
     <header className="sticky top-0 z-30 bg-white border-b border-slate-200 print:hidden">
@@ -61,7 +69,7 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="text-sm sm:text-base font-bold tracking-tight text-slate-900 block leading-tight">
               GuruMapel
             </span>
-            <span className="text-[11px] sm:text-xs text-slate-500 block truncate max-w-[120px] sm:max-w-[220px]">
+            <span className="text-[11px] sm:text-xs text-slate-500 block truncate max-w-[140px] sm:max-w-[240px]">
               {subjectSummary}
             </span>
           </div>
@@ -73,8 +81,14 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded border border-emerald-200 truncate max-w-[140px] sm:max-w-none">
               Siswa: {currentStudent ? currentStudent.name : 'Siswa'}
             </span>
-            <span aria-hidden="true" className="hidden sm:inline">·</span>
-            <span className="hidden sm:inline truncate max-w-[200px]">{subjectSummary}</span>
+            {studentClass && (
+              <>
+                <span aria-hidden="true" className="hidden sm:inline">·</span>
+                <span className="hidden sm:inline truncate max-w-[220px]">
+                  {studentClass.name} ({subjectSummary})
+                </span>
+              </>
+            )}
           </div>
         ) : (
           <div className="hidden md:flex items-center gap-2 text-xs text-slate-500">

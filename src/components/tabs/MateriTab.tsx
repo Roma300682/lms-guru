@@ -18,14 +18,22 @@ export const MateriTab: React.FC<MateriTabProps> = ({ onShareToWhatsApp }) => {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const fallbackSubject = getPrimarySubject(teacher.subject);
+  const activeClassObj = activeClassId !== 'all' ? classes.find((c) => c.id === activeClassId) : undefined;
+  const activeClassSubject = activeClassObj?.subject?.trim();
 
-  // Filter materials based on active class and active subject
+  // Filter materials based on active class (and its separated subject) and active subject
   const filteredByClassAndSubject = materials.filter((m) => {
-    const classMatch = activeClassId === 'all' || m.classId === 'all' || m.classId === activeClassId;
+    const isDirectClass = activeClassId === 'all' || m.classId === activeClassId;
+    const isAllClass = m.classId === 'all';
+    if (!isDirectClass && !isAllClass) return false;
     const itemSubject = m.subject?.trim() || fallbackSubject;
-    const subjectMatch =
-      activeSubject === 'all' || itemSubject.toLowerCase() === activeSubject.toLowerCase();
-    return classMatch && subjectMatch;
+    if (activeSubject !== 'all') {
+      return itemSubject.toLowerCase() === activeSubject.toLowerCase();
+    }
+    if (isAllClass && activeClassSubject && m.subject?.trim()) {
+      return m.subject.trim().toLowerCase() === activeClassSubject.toLowerCase();
+    }
+    return true;
   });
 
   // Filter by search query

@@ -14,9 +14,12 @@ export const AttendanceModal: React.FC<AttendanceModalProps> = ({ isOpen, onClos
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [classId, setClassId] = useState(activeClassId === 'all' ? classes[0]?.id || 'c1' : activeClassId);
   const [newClassName, setNewClassName] = useState('');
-  const [subject, setSubject] = useState(
-    activeSubject !== 'all' ? activeSubject : (teacherSubjects[0] || '')
-  );
+  const [newClassSubject, setNewClassSubject] = useState('');
+  const [subject, setSubject] = useState(() => {
+    const initialCid = activeClassId === 'all' ? classes[0]?.id : activeClassId;
+    const clsSubj = classes.find((c) => c.id === initialCid)?.subject?.trim();
+    return clsSubj || (activeSubject !== 'all' ? activeSubject : (teacherSubjects[0] || ''));
+  });
   const [topic, setTopic] = useState('');
 
   // Local state for student attendance
@@ -24,10 +27,19 @@ export const AttendanceModal: React.FC<AttendanceModalProps> = ({ isOpen, onClos
 
   React.useEffect(() => {
     if (isOpen) {
-      setSubject(activeSubject !== 'all' ? activeSubject : (teacherSubjects[0] || ''));
+      let resolvedClassId = classId;
       if (classes.length > 0 && !classes.some((c) => c.id === classId)) {
-        setClassId(activeClassId !== 'all' && classes.some((c) => c.id === activeClassId) ? activeClassId : classes[0].id);
+        resolvedClassId =
+          activeClassId !== 'all' && classes.some((c) => c.id === activeClassId)
+            ? activeClassId
+            : classes[0].id;
+        setClassId(resolvedClassId);
+      } else if (activeClassId !== 'all' && classes.some((c) => c.id === activeClassId)) {
+        resolvedClassId = activeClassId;
+        setClassId(activeClassId);
       }
+      const clsSubj = classes.find((c) => c.id === resolvedClassId)?.subject?.trim();
+      setSubject(clsSubj || (activeSubject !== 'all' ? activeSubject : (teacherSubjects[0] || '')));
     }
   }, [isOpen, activeSubject, teacherSubjects, classes, activeClassId, classId]);
 
@@ -87,12 +99,14 @@ export const AttendanceModal: React.FC<AttendanceModalProps> = ({ isOpen, onClos
             onSubmit={(e) => {
               e.preventDefault();
               if (!newClassName.trim()) return;
-              const createdId = addClass(newClassName.trim());
+              const createdId = addClass(newClassName.trim(), newClassSubject.trim() || undefined);
               if (createdId) {
                 setClassId(createdId);
                 setActiveClassId(createdId);
+                if (newClassSubject.trim()) setSubject(newClassSubject.trim());
               }
               setNewClassName('');
+              setNewClassSubject('');
             }}
             className="p-6 space-y-4"
           >
@@ -108,9 +122,16 @@ export const AttendanceModal: React.FC<AttendanceModalProps> = ({ isOpen, onClos
                 required
                 value={newClassName}
                 onChange={(e) => setNewClassName(e.target.value)}
-                placeholder="Nama Rombel Baru (cth: Kelas X IPA 1)"
+                placeholder="Nama Rombel (cth: Kelas X IPA 1)"
                 className="flex-1 text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                 autoFocus
+              />
+              <input
+                type="text"
+                value={newClassSubject}
+                onChange={(e) => setNewClassSubject(e.target.value)}
+                placeholder="Mapel kelas ini (cth: Biologi)"
+                className="flex-1 text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
               />
               <button
                 type="submit"
@@ -141,14 +162,17 @@ export const AttendanceModal: React.FC<AttendanceModalProps> = ({ isOpen, onClos
                   <select
                     value={classId || classes[0]?.id || ''}
                     onChange={(e) => {
-                      setClassId(e.target.value);
+                      const nextId = e.target.value;
+                      setClassId(nextId);
                       setStatuses({});
+                      const clsSubj = classes.find((c) => c.id === nextId)?.subject?.trim();
+                      if (clsSubj) setSubject(clsSubj);
                     }}
                     className="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 bg-white"
                   >
                   {classes.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name}
+                      {c.name}{c.subject?.trim() ? ` · ${c.subject.trim()}` : ''}
                     </option>
                   ))}
                 </select>

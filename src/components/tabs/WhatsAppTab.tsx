@@ -22,6 +22,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Edit2,
+  Trash2,
   RotateCcw,
   Link2,
 } from 'lucide-react';
@@ -241,9 +242,17 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({ prefill, onClearPrefil
   };
 
   const handleSaveWaNumber = (studentId: string) => {
-    updateStudent(studentId, { whatsapp: editingWaVal.trim() || undefined });
+    updateStudent(studentId, { whatsapp: editingWaVal.trim() });
     setEditingWaId(null);
     setEditingWaVal('');
+  };
+
+  const handleDeleteWaNumber = (studentId: string) => {
+    updateStudent(studentId, { whatsapp: '' });
+    if (editingWaId === studentId) {
+      setEditingWaId(null);
+      setEditingWaVal('');
+    }
   };
 
   const handleCopyText = async (text: string, type: 'msg' | 'phones') => {
@@ -767,7 +776,7 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({ prefill, onClearPrefil
                       </div>
 
                       {isEditing ? (
-                        <div className="flex items-center gap-1 mt-1">
+                        <div className="flex flex-wrap items-center gap-1 mt-1">
                           <input
                             type="text"
                             value={editingWaVal}
@@ -781,7 +790,7 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({ prefill, onClearPrefil
                               }
                             }}
                             placeholder="081234567890"
-                            className="w-36 px-2 py-1 text-xs border border-emerald-400 rounded focus:outline-hidden"
+                            className="w-36 px-2 py-1 text-xs border border-emerald-400 rounded focus:outline-hidden font-mono"
                             autoFocus
                           />
                           <button
@@ -791,6 +800,16 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({ prefill, onClearPrefil
                           >
                             Simpan
                           </button>
+                          {(validPhone || student.whatsapp || student.phoneHash) && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteWaNumber(student.id)}
+                              className="px-2 py-1 text-[11px] font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded"
+                              title="Hapus nomor telepon siswa ini"
+                            >
+                              Hapus No.
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <div className="flex items-center gap-1.5 mt-0.5">
@@ -812,6 +831,16 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({ prefill, onClearPrefil
                           >
                             <Edit2 className="w-3 h-3" />
                           </button>
+                          {(validPhone || student.whatsapp || student.phoneHash) && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteWaNumber(student.id)}
+                              className="text-slate-400 hover:text-rose-600 p-0.5 rounded"
+                              title="Hapus No. Telpon / WA"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
                           {serverItem && !serverItem.ok && (
                             <span className="text-[10px] text-rose-600 font-medium">
                               ({serverItem.detail})

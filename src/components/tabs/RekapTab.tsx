@@ -14,31 +14,35 @@ export const RekapTab: React.FC = () => {
 
   const kktp = typeof teacher.kktp === 'number' ? teacher.kktp : 75;
   const fallbackSubject = getPrimarySubject(teacher.subject);
-  const displayedSubjectLabel = activeSubject !== 'all' ? activeSubject : teacher.subject;
 
   // Selected class
   const targetClassId = activeClassId === 'all' ? (selectedLocalClassId || classes[0]?.id || '') : activeClassId;
   const currentClass = classes.find((c) => c.id === targetClassId) || classes[0];
   const targetClassName = currentClass?.name || 'Kelas';
+  const classSubject = currentClass?.subject?.trim();
+  const displayedSubjectLabel = activeSubject !== 'all' ? activeSubject : (classSubject || fallbackSubject);
 
   // Filter students
   const classStudents = targetClassId ? students.filter((s) => s.classId === targetClassId) : [];
 
-  // Filter tasks for this class & active subject
-  const classTasks = tasks.filter((t) => {
-    const classOk = t.classId === 'all' || (targetClassId && t.classId === targetClassId);
-    const subj = t.subject?.trim() || fallbackSubject;
-    const subjOk = activeSubject === 'all' || subj.toLowerCase() === activeSubject.toLowerCase();
-    return classOk && subjOk;
-  });
+  const matchesClassAndSubject = (itemClassId: string, itemSubject?: string) => {
+    const isDirectClass = Boolean(targetClassId && itemClassId === targetClassId);
+    if (!isDirectClass && itemClassId !== 'all') return false;
+    const subj = itemSubject?.trim() || fallbackSubject;
+    if (activeSubject !== 'all') {
+      return subj.toLowerCase() === activeSubject.toLowerCase();
+    }
+    if (itemClassId === 'all' && classSubject && itemSubject?.trim()) {
+      return itemSubject.trim().toLowerCase() === classSubject.toLowerCase();
+    }
+    return true;
+  };
 
-  // Filter CBT exams for this class & active subject
-  const classCbtExams = cbtExams.filter((ex) => {
-    const classOk = ex.classId === 'all' || (targetClassId && ex.classId === targetClassId);
-    const subj = ex.subject?.trim() || fallbackSubject;
-    const subjOk = activeSubject === 'all' || subj.toLowerCase() === activeSubject.toLowerCase();
-    return classOk && subjOk;
-  });
+  // Filter tasks for this class & separated subject
+  const classTasks = tasks.filter((t) => matchesClassAndSubject(t.classId, t.subject));
+
+  // Filter CBT exams for this class & separated subject
+  const classCbtExams = cbtExams.filter((ex) => matchesClassAndSubject(ex.classId, ex.subject));
 
   // Filter attendance for this class & active subject
   const classAttendance = targetClassId
@@ -193,7 +197,7 @@ export const RekapTab: React.FC = () => {
                 Buku Rekapitulasi Nilai {displayedSubjectLabel}
               </h3>
               <p className="text-xs text-slate-500">
-                {targetClassName} · Kriteria Ketuntasan (KKTP): 75
+                {targetClassName} · Kriteria Ketuntasan (KKTP): {kktp}
               </p>
             </div>
             <div className="text-xs text-slate-500">

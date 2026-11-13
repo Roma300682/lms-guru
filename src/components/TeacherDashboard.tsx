@@ -41,7 +41,6 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 }) => {
   const {
     teacher,
-    teacherSubjects,
     classes,
     students,
     materials,
@@ -54,6 +53,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [waPrefill, setWaPrefill] = useState<WhatsAppPrefill | null>(null);
 
+  const selectedClassObj = activeClassId !== 'all' ? classes.find((c) => c.id === activeClassId) : undefined;
+  const fallbackSubject = teacher.subject?.split(',')[0]?.trim() || 'Mata Pelajaran';
   const activeCbtCount = cbtExams.filter((ex) => ex.isActive).length;
 
   const handleSelectTab = (tab: TeacherTabId) => {
@@ -205,7 +206,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         {/* Subject & Class Quick Bar */}
         <div className="bg-white rounded-xl border border-slate-200 p-3.5 sm:p-4 shadow-xs space-y-3 print:hidden">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 sm:gap-4">
-            {/* Left: Subject & Teacher Info */}
+            {/* Left: Target Class Subject & Teacher Info */}
             <div className="flex items-center gap-3 min-w-0">
               <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-700 shrink-0">
                 <BookOpen className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -213,14 +214,35 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                   <h1 className="text-sm sm:text-base font-bold text-slate-900 leading-tight truncate">
-                    {teacherSubjects.length > 0 ? teacherSubjects.join(' · ') : teacher.subject}
+                    {selectedClassObj
+                      ? `${selectedClassObj.name} · ${selectedClassObj.subject?.trim() || fallbackSubject}`
+                      : classes.length > 0
+                      ? `Semua Rombel (${classes.length} Kelas)`
+                      : fallbackSubject}
                   </h1>
                   <span className="text-xs text-slate-500 truncate">· {teacher.name}</span>
                 </div>
                 <p className="text-[11px] sm:text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
                   <Users className="w-3.5 h-3.5 shrink-0" />
                   <span>
-                    <strong>{students.length}</strong> siswa aktif di <strong>{classes.length}</strong> rombel
+                    {selectedClassObj ? (
+                      <>
+                        <strong>{students.filter((s) => s.classId === selectedClassObj.id).length}</strong> siswa di kelas ini
+                        {!selectedClassObj.subject?.trim() && (
+                          <button
+                            type="button"
+                            onClick={onOpenProfile}
+                            className="ml-2 text-indigo-600 hover:underline font-medium"
+                          >
+                            (Atur Mapel Kelas)
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <strong>{students.length}</strong> siswa aktif di <strong>{classes.length}</strong> rombel (pilih kelas untuk memisahkan mapel)
+                      </>
+                    )}
                   </span>
                 </p>
               </div>
@@ -264,7 +286,12 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                           : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
-                      {c.name}{' '}
+                      {c.name}
+                      {c.subject?.trim() && (
+                        <span className="text-[10px] font-medium text-indigo-600 ml-1">
+                          · {c.subject.trim()}
+                        </span>
+                      )}{' '}
                       <span className="text-[10px] font-normal text-slate-400">({count})</span>
                     </button>
                   );

@@ -100,6 +100,10 @@
           "minLength": 1,
           "maxLength": 80
         },
+        "subject": {
+          "type": "string",
+          "maxLength": 120
+        },
         "whatsappGroupUrl": {
           "type": "string",
           "maxLength": 300

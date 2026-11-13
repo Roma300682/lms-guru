@@ -71,8 +71,10 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
 
   // Class management state
   const [newClassName, setNewClassName] = useState('');
+  const [newClassSubject, setNewClassSubject] = useState('');
   const [editingClassId, setEditingClassId] = useState<string | null>(null);
   const [editingClassName, setEditingClassName] = useState('');
+  const [editingClassSubject, setEditingClassSubject] = useState('');
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [confirmDeleteClassId, setConfirmDeleteClassId] = useState<string | null>(null);
 
@@ -129,15 +131,20 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
   const handleAddClass = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newClassName.trim()) return;
-    addClass(newClassName);
+    addClass(newClassName, newClassSubject.trim() || undefined);
     setNewClassName('');
+    setNewClassSubject('');
   };
 
   const handleSaveClassRename = (classId: string) => {
     if (!editingClassName.trim()) return;
-    updateClass(classId, { name: editingClassName.trim() });
+    updateClass(classId, {
+      name: editingClassName.trim(),
+      subject: editingClassSubject.trim(),
+    });
     setEditingClassId(null);
     setEditingClassName('');
+    setEditingClassSubject('');
   };
 
   const handleAddStudent = (e: React.FormEvent) => {
@@ -330,7 +337,7 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block font-medium text-slate-700 mb-1">
-                        Mata Pelajaran yang Diampu
+                        Mata Pelajaran Utama (Bawaan)
                       </label>
                       <input
                         type="text"
@@ -339,6 +346,9 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
                         placeholder="Misal: Biologi, Matematika, dll."
                         className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-xs"
                       />
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Untuk memisahkan mapel per kelas agar tidak membingungkan siswa, atur Mapel tiap kelas di tab <strong>Rombel &amp; Siswa</strong>.
+                      </p>
                     </div>
                     <div>
                       <label className="block font-medium text-slate-700 mb-1">
@@ -449,30 +459,37 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
                 </div>
 
                 {/* Add Class Form */}
-                <form onSubmit={handleAddClass} className="flex flex-col sm:flex-row gap-2">
+                <form onSubmit={handleAddClass} className="grid grid-cols-1 sm:grid-cols-12 gap-2">
                   <input
                     type="text"
                     placeholder="Nama Rombel Baru (misal: Kelas XI-1)"
                     value={newClassName}
                     onChange={(e) => setNewClassName(e.target.value)}
-                    className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-xs"
+                    className="sm:col-span-5 px-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-xs"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Mata Pelajaran kelas ini (cth: Biologi)"
+                    value={newClassSubject}
+                    onChange={(e) => setNewClassSubject(e.target.value)}
+                    className="sm:col-span-4 px-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-xs"
                   />
                   <button
                     type="submit"
-                    className="inline-flex items-center justify-center gap-1 font-medium px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg transition-colors shrink-0"
+                    className="sm:col-span-3 inline-flex items-center justify-center gap-1 font-medium px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg transition-colors shrink-0"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Tambah Rombel</span>
                   </button>
                 </form>
 
-                {/* Class List with Rename & Inline Delete */}
+                {/* Class List with Rename, Per-Class Subject & Inline Delete */}
                 {classes.length === 0 ? (
                   <div className="py-5 px-3 text-center bg-slate-50 border border-dashed border-slate-300 rounded-lg text-slate-500 text-xs">
                     Belum ada rombel kelas yang terdaftar. Silakan masukkan nama rombel baru di atas atau gunakan tombol <strong>Upload Siswa</strong>.
                   </div>
                 ) : (
-                  <div className="space-y-1.5 max-h-52 overflow-y-auto">
+                  <div className="space-y-1.5 max-h-56 overflow-y-auto">
                     {classes.map((cls) => {
                       const count = students.filter((s) => s.classId === cls.id).length;
                       const isConfirming = confirmDeleteClassId === cls.id;
@@ -483,11 +500,12 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
                           className="flex items-center justify-between gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg"
                         >
                           {isEditing ? (
-                            <div className="flex items-center gap-1.5 flex-1">
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 flex-1">
                               <input
                                 type="text"
                                 value={editingClassName}
                                 onChange={(e) => setEditingClassName(e.target.value)}
+                                placeholder="Nama Kelas"
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter') {
                                     e.preventDefault();
@@ -499,26 +517,52 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
                                 className="flex-1 px-2.5 py-1 border border-indigo-300 rounded bg-white text-xs focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
                                 autoFocus
                               />
-                              <button
-                                type="button"
-                                onClick={() => handleSaveClassRename(cls.id)}
-                                className="text-[11px] font-semibold px-2.5 py-1 bg-indigo-600 text-white rounded"
-                              >
-                                Simpan
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setEditingClassId(null)}
-                                className="text-[11px] px-2 py-1 text-slate-600 hover:bg-slate-200 rounded"
-                              >
-                                Batal
-                              </button>
+                              <input
+                                type="text"
+                                value={editingClassSubject}
+                                onChange={(e) => setEditingClassSubject(e.target.value)}
+                                placeholder="Mapel kelas ini"
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleSaveClassRename(cls.id);
+                                  } else if (e.key === 'Escape') {
+                                    setEditingClassId(null);
+                                  }
+                                }}
+                                className="flex-1 px-2.5 py-1 border border-indigo-300 rounded bg-white text-xs focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                              />
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveClassRename(cls.id)}
+                                  className="text-[11px] font-semibold px-2.5 py-1 bg-indigo-600 text-white rounded"
+                                >
+                                  Simpan
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingClassId(null)}
+                                  className="text-[11px] px-2 py-1 text-slate-600 hover:bg-slate-200 rounded"
+                                >
+                                  Batal
+                                </button>
+                              </div>
                             </div>
                           ) : (
                             <>
-                              <div className="min-w-0 truncate">
+                              <div className="min-w-0 flex flex-wrap items-center gap-1.5">
                                 <span className="font-semibold text-slate-800">{cls.name}</span>
-                                <span className="text-slate-500 ml-2">({count} siswa)</span>
+                                {cls.subject?.trim() ? (
+                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                    {cls.subject.trim()}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                    Mapel belum diatur
+                                  </span>
+                                )}
+                                <span className="text-slate-500">({count} siswa)</span>
                               </div>
                               {isConfirming ? (
                                 <div className="inline-flex items-center gap-1.5 shrink-0">
@@ -547,10 +591,11 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
                                     onClick={() => {
                                       setEditingClassId(cls.id);
                                       setEditingClassName(cls.name);
+                                      setEditingClassSubject(cls.subject || '');
                                       setConfirmDeleteClassId(null);
                                     }}
                                     className="text-slate-500 hover:text-indigo-700 hover:bg-indigo-50 p-1.5 rounded-md transition-colors"
-                                    title={`Ubah nama kelas ${cls.name}`}
+                                    title={`Ubah nama & mapel kelas ${cls.name}`}
                                   >
                                     <Pencil className="w-3.5 h-3.5" />
                                   </button>

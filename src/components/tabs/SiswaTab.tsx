@@ -12,6 +12,7 @@ export const SiswaTab: React.FC = () => {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isAddingSingle, setIsAddingSingle] = useState(false);
   const [newClassName, setNewClassName] = useState('');
+  const [newClassSubject, setNewClassSubject] = useState('');
   const [newStudentName, setNewStudentName] = useState('');
   const [newStudentWa, setNewStudentWa] = useState('');
   const [editingWaId, setEditingWaId] = useState<string | null>(null);
@@ -56,18 +57,27 @@ export const SiswaTab: React.FC = () => {
     e.preventDefault();
     const cleaned = newClassName.trim();
     if (!cleaned) return;
-    const createdId = addClass(cleaned);
+    const createdId = addClass(cleaned, newClassSubject.trim() || undefined);
     if (createdId) {
       setTargetClassForSingle(createdId);
       setActiveClassId(createdId);
     }
     setNewClassName('');
+    setNewClassSubject('');
   };
 
   const handleSaveStudentWa = (studentId: string) => {
-    updateStudent(studentId, { whatsapp: editingWaValue.trim() || undefined });
+    updateStudent(studentId, { whatsapp: editingWaValue.trim() });
     setEditingWaId(null);
     setEditingWaValue('');
+  };
+
+  const handleDeleteStudentWa = (studentId: string) => {
+    updateStudent(studentId, { whatsapp: '' });
+    if (editingWaId === studentId) {
+      setEditingWaId(null);
+      setEditingWaValue('');
+    }
   };
 
   const handleImportSuccess = (count: number, className: string) => {
@@ -115,9 +125,16 @@ export const SiswaTab: React.FC = () => {
             <Users className="w-4 h-4" />
           </div>
           <div>
-            <h2 className="text-sm font-bold text-slate-900 leading-tight">
-              Daftar Siswa {currentClassObj ? `· ${currentClassObj.name}` : '(Semua Kelas)'}
-            </h2>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <h2 className="text-sm font-bold text-slate-900 leading-tight">
+                Daftar Siswa {currentClassObj ? `· ${currentClassObj.name}` : '(Semua Kelas)'}
+              </h2>
+              {currentClassObj?.subject?.trim() && (
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  {currentClassObj.subject.trim()}
+                </span>
+              )}
+            </div>
             <p className="text-xs text-slate-500">
               {filteredByClass.length} siswa terdaftar {classes.length > 0 ? `di ${classes.length} rombel` : ''}
             </p>
@@ -192,18 +209,25 @@ export const SiswaTab: React.FC = () => {
               Tambahkan minimal 1 rombel kelas terlebih dahulu sebelum menambahkan atau mengimpor siswa.
             </p>
           </div>
-          <div className="flex flex-col sm:flex-row gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
             <input
               type="text"
               required
-              placeholder="Nama Rombel Baru (cth: Kelas X IPA 1 atau VII-A)"
+              placeholder="Nama Rombel Baru (cth: Kelas X IPA 1)"
               value={newClassName}
               onChange={(e) => setNewClassName(e.target.value)}
-              className="flex-1 px-3 py-2 bg-white border border-amber-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-xs"
+              className="sm:col-span-5 px-3 py-2 bg-white border border-amber-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-xs"
+            />
+            <input
+              type="text"
+              placeholder="Mata Pelajaran kelas ini (cth: Biologi)"
+              value={newClassSubject}
+              onChange={(e) => setNewClassSubject(e.target.value)}
+              className="sm:col-span-4 px-3 py-2 bg-white border border-amber-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-xs"
             />
             <button
               type="submit"
-              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-xs transition-colors shrink-0"
+              className="sm:col-span-3 inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-xs transition-colors shrink-0"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Buat Rombel Kelas</span>
@@ -381,7 +405,7 @@ export const SiswaTab: React.FC = () => {
                     </div>
 
                     {isEditingThisWa ? (
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <input
                           type="tel"
                           value={editingWaValue}
@@ -395,7 +419,7 @@ export const SiswaTab: React.FC = () => {
                             }
                           }}
                           placeholder="081234567890"
-                          className="flex-1 px-2.5 py-1.5 text-xs border border-indigo-300 rounded-lg focus:outline-hidden focus:ring-1 focus:ring-indigo-500 font-mono"
+                          className="flex-1 min-w-[140px] px-2.5 py-1.5 text-xs border border-indigo-300 rounded-lg focus:outline-hidden focus:ring-1 focus:ring-indigo-500 font-mono"
                           autoFocus
                         />
                         <button
@@ -405,6 +429,16 @@ export const SiswaTab: React.FC = () => {
                         >
                           Simpan
                         </button>
+                        {(validWa || student.phoneHash) && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteStudentWa(student.id)}
+                            className="px-2.5 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg"
+                            title="Hapus nomor telepon/WhatsApp siswa ini"
+                          >
+                            Hapus No.
+                          </button>
+                        )}
                       </div>
                     ) : (
                       <div className="flex items-center justify-between gap-2 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100">
@@ -421,17 +455,30 @@ export const SiswaTab: React.FC = () => {
                         ) : (
                           <span className="text-[11px] text-slate-400 italic">No. WA belum diisi</span>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingWaId(student.id);
-                            setEditingWaValue(student.whatsapp || '');
-                          }}
-                          className="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-600 px-2 py-1 rounded hover:bg-indigo-50"
-                        >
-                          <Edit2 className="w-3 h-3" />
-                          <span>{validWa ? 'Ubah' : 'Isi WA'}</span>
-                        </button>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingWaId(student.id);
+                              setEditingWaValue(student.whatsapp || '');
+                            }}
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-600 px-2 py-1 rounded hover:bg-indigo-50"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                            <span>{validWa ? 'Ubah' : 'Isi WA'}</span>
+                          </button>
+                          {(validWa || student.phoneHash) && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteStudentWa(student.id)}
+                              className="inline-flex items-center gap-1 text-[11px] font-medium text-rose-600 px-2 py-1 rounded hover:bg-rose-50"
+                              title="Hapus No. Telpon / WA"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Hapus</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -486,7 +533,7 @@ export const SiswaTab: React.FC = () => {
                                 }
                               }}
                               placeholder="0812..."
-                              className="w-28 px-2 py-1 text-xs border border-indigo-300 rounded focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                              className="w-28 px-2 py-1 text-xs border border-indigo-300 rounded focus:outline-hidden focus:ring-1 focus:ring-indigo-500 font-mono"
                               autoFocus
                             />
                             <button
@@ -497,9 +544,19 @@ export const SiswaTab: React.FC = () => {
                             >
                               <Check className="w-3.5 h-3.5" />
                             </button>
+                            {(validWa || student.phoneHash) && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteStudentWa(student.id)}
+                                className="p-1 text-rose-600 hover:bg-rose-50 rounded"
+                                title="Hapus No. Telpon / WA"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
                         ) : (
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1">
                             {validWa ? (
                               <a
                                 href={buildWaMeUrl(student.whatsapp, `Halo ${student.name},`)}
@@ -525,6 +582,16 @@ export const SiswaTab: React.FC = () => {
                             >
                               <Edit2 className="w-3 h-3" />
                             </button>
+                            {(validWa || student.phoneHash) && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteStudentWa(student.id)}
+                                className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 transition-colors"
+                                title="Hapus No. Telpon / WA siswa ini"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
                           </div>
                         )}
                       </td>

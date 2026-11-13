@@ -57,19 +57,25 @@ export const CbtGuruTab: React.FC<CbtGuruTabProps> = ({ onNavigateToSoalAI }) =>
 
   const kktp = typeof teacher.kktp === 'number' ? teacher.kktp : 75;
   const fallbackSubject = getPrimarySubject(teacher.subject);
+  const activeClassObj = activeClassId !== 'all' ? classes.find((c) => c.id === activeClassId) : undefined;
+  const activeClassSubject = activeClassObj?.subject?.trim();
 
-  // Filter exams by active class & active subject
+  // Filter exams by active class (and its separated subject) & active subject
   const filteredExams = useMemo(() => {
     return cbtExams.filter((ex) => {
-      const matchClass =
-        activeClassId === 'all' || ex.classId === 'all' || ex.classId === activeClassId;
+      const isDirectClass = activeClassId === 'all' || ex.classId === activeClassId;
+      const isAllClass = ex.classId === 'all';
+      if (!isDirectClass && !isAllClass) return false;
       const exSubj = ex.subject?.trim() || fallbackSubject;
-      const matchSubj =
-        activeSubject === 'all' ||
-        exSubj.toLowerCase() === activeSubject.toLowerCase();
-      return matchClass && matchSubj;
+      if (activeSubject !== 'all') {
+        return exSubj.toLowerCase() === activeSubject.toLowerCase();
+      }
+      if (isAllClass && activeClassSubject && ex.subject?.trim()) {
+        return ex.subject.trim().toLowerCase() === activeClassSubject.toLowerCase();
+      }
+      return true;
     });
-  }, [cbtExams, activeClassId, activeSubject, fallbackSubject]);
+  }, [cbtExams, activeClassId, activeClassSubject, activeSubject, fallbackSubject]);
 
   const [selectedExamId, setSelectedExamId] = useState<string | null>(
     () => filteredExams[0]?.id || null

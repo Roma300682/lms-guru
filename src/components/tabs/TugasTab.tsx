@@ -20,14 +20,22 @@ export const TugasTab: React.FC<TugasTabProps> = ({ onShareToWhatsApp }) => {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const fallbackSubject = getPrimarySubject(teacher.subject);
+  const activeClassObj = activeClassId !== 'all' ? classes.find((c) => c.id === activeClassId) : undefined;
+  const activeClassSubject = activeClassObj?.subject?.trim();
 
-  // Filter tasks based on active class and active subject
+  // Filter tasks based on active class (and its separated subject) and active subject
   const filteredTasks = tasks.filter((t) => {
-    const classMatch = activeClassId === 'all' || t.classId === 'all' || t.classId === activeClassId;
+    const isDirectClass = activeClassId === 'all' || t.classId === activeClassId;
+    const isAllClass = t.classId === 'all';
+    if (!isDirectClass && !isAllClass) return false;
     const itemSubject = t.subject?.trim() || fallbackSubject;
-    const subjectMatch =
-      activeSubject === 'all' || itemSubject.toLowerCase() === activeSubject.toLowerCase();
-    return classMatch && subjectMatch;
+    if (activeSubject !== 'all') {
+      return itemSubject.toLowerCase() === activeSubject.toLowerCase();
+    }
+    if (isAllClass && activeClassSubject && t.subject?.trim()) {
+      return t.subject.trim().toLowerCase() === activeClassSubject.toLowerCase();
+    }
+    return true;
   });
 
   const getClassName = (classId: string) => {
