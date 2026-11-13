@@ -204,12 +204,10 @@ export const StudentPortal: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {authSession?.role === 'student' && !isCloudConnected && (
+      {authSession?.role === 'student' && !isCloudConnected && !isStudentCloudSynced && (
         <div
           className={`border rounded-xl p-3.5 space-y-2 text-xs ${
-            isStudentCloudSynced
-              ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
-              : anonymousAuthBlocked
+            anonymousAuthBlocked
               ? 'bg-amber-50 border-amber-200 text-amber-900'
               : 'bg-slate-50 border-slate-200 text-slate-700'
           }`}
@@ -222,11 +220,7 @@ export const StudentPortal: React.FC = () => {
                 <Cloud className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
               )}
               <span>
-                {isStudentCloudSynced ? (
-                  <>
-                    <strong>Sinkron Cloud Aktif (Tanpa Google):</strong> Materi, tugas, dan file yang Anda upload langsung tersinkron otomatis ke Dashboard Guru.
-                  </>
-                ) : anonymousAuthBlocked ? (
+                {anonymousAuthBlocked ? (
                   <>
                     <strong>Sinkron Otomatis Menunggu Aktivasi Anonymous Auth:</strong> Guru/Admin perlu mengaktifkan provider <strong>Anonymous</strong> 1x di Firebase Console agar sinkron berjalan tanpa Google.
                   </>

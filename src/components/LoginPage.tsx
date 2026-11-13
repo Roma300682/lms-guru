@@ -416,16 +416,6 @@ export const LoginPage: React.FC = () => {
                     Ganti Akun
                   </button>
                 </div>
-              ) : isStudentCloudSynced ? (
-                <div className="p-3 rounded-xl bg-emerald-50/80 border border-emerald-200 text-[11px] text-emerald-900 space-y-1 leading-relaxed">
-                  <span className="font-bold text-emerald-950 flex items-center gap-1.5">
-                    <Cloud className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>Sinkron Cloud Otomatis Aktif (Tanpa Google)</span>
-                  </span>
-                  <span>
-                    Daftar kelas, nama siswa, materi, dan upload tugas langsung tersinkron ke Dashboard Guru tanpa perlu login Google.
-                  </span>
-                </div>
               ) : anonymousAuthBlocked ? (
                 <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 space-y-2 leading-relaxed">
                   <div className="font-bold text-amber-950 flex items-center gap-1.5">
@@ -454,16 +444,7 @@ export const LoginPage: React.FC = () => {
                     </button>
                   </div>
                 </div>
-              ) : (
-                <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200 text-[11px] text-emerald-900 space-y-1 leading-relaxed">
-                  <span className="font-bold text-emerald-950 block">
-                    Masuk Siswa Tanpa Wajib Login Google
-                  </span>
-                  <span>
-                    Pilih kelas, pilih nama Anda, dan isi No. HP aktif lalu langsung masuk ke Ruang Belajar Siswa.
-                  </span>
-                </div>
-              )}
+              ) : null}
 
               <form onSubmit={handleStudentSubmit} className="space-y-3.5">
                 {classes.length === 0 ? (
