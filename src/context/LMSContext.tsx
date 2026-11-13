@@ -74,6 +74,7 @@ interface LMSContextType {
   isCloudConnected: boolean;
   isInIframe: boolean;
   cloudAuthError: string | null;
+  cloudAuthErrorCode: string | null;
   clearCloudAuthError: () => void;
 
   authSession: AuthSession | null;
@@ -101,9 +102,10 @@ interface LMSContextType {
   addStudentsBatch: (newStudents: { name: string; classId: string; whatsapp?: string }[]) => void;
   deleteStudent: (id: string) => void;
 
-  // Admin Backup & Restore
+  // Admin Backup & Restore & Cloud Sync
   exportBackup: () => void;
-  importBackup: (jsonContent: string) => boolean;
+  importBackup: (jsonContent: string) => Promise<{ ok: boolean; message: string }>;
+  syncLocalDataToCloud: () => Promise<{ ok: boolean; message: string }>;
 
   // Material Actions
   addMaterial: (material: Omit<Material, 'id' | 'date'>) => void;
@@ -199,6 +201,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [isCloudAdmin, setIsCloudAdmin] = useState<boolean>(false);
   const [cloudAuthError, setCloudAuthError] = useState<string | null>(null);
+  const [cloudAuthErrorCode, setCloudAuthErrorCode] = useState<string | null>(null);
 
   // Track Firestore document ownership & student claim metadata
   const teacherOwnerUidRef = useRef<string>('');
@@ -207,14 +210,38 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const taskOwnerMapRef = useRef<Record<string, string>>({});
   const submissionStudentUidMapRef = useRef<Record<string, string>>({});
   const hasSeededCloudRef = useRef<boolean>(false);
+  const cloudIdsRef = useRef<{
+    hasTeacherPublic: boolean;
+    hasTeacherPrivate: boolean;
+    classes: Set<string>;
+    students: Set<string>;
+    contacts: Set<string>;
+    materials: Set<string>;
+    tasks: Set<string>;
+    attendance: Set<string>;
+    questionSets: Set<string>;
+    submissions: Set<string>;
+  }>({
+    hasTeacherPublic: false,
+    hasTeacherPrivate: false,
+    classes: new Set(),
+    students: new Set(),
+    contacts: new Set(),
+    materials: new Set(),
+    tasks: new Set(),
+    attendance: new Set(),
+    questionSets: new Set(),
+    submissions: new Set(),
+  });
 
-  // Keep latest local state refs for initial cloud bootstrap
+  // Keep latest local state refs for initial cloud bootstrap & pre-cloud backup
   const latestLocalRef = useRef({
     teacher,
     classes,
     studentsRoster,
     materials,
     tasks,
+    submissions,
     attendance,
     questionSets,
   });
@@ -224,6 +251,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     studentsRoster,
     materials,
     tasks,
+    submissions,
     attendance,
     questionSets,
   };
@@ -240,7 +268,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [studentsRoster, studentContacts]
   );
 
-  const clearCloudAuthError = useCallback(() => setCloudAuthError(null), []);
+  const clearCloudAuthError = useCallback(() => {
+    setCloudAuthError(null);
+    setCloudAuthErrorCode(null);
+  }, []);
 
   const isInIframe = isEmbeddedInIframe();
 
@@ -290,6 +321,33 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (!active) return;
+      if (user && user.emailVerified) {
+        // Preserve browser's localStorage snapshot before cloud listeners overwrite state
+        // (Skip overwriting gm_precloud_backup on simple page reload while already signed in as the same UID)
+        try {
+          const prevCloudUid = localStorage.getItem('gm_cloud_uid');
+          if (prevCloudUid !== user.uid || !localStorage.getItem('gm_precloud_backup')) {
+            const snap = latestLocalRef.current;
+            localStorage.setItem(
+              'gm_precloud_backup',
+              JSON.stringify({
+                teacher: snap.teacher,
+                classes: snap.classes,
+                students: snap.studentsRoster,
+                materials: snap.materials,
+                tasks: snap.tasks,
+                submissions: snap.submissions,
+                attendance: snap.attendance,
+                questionSets: snap.questionSets,
+                savedAt: new Date().toISOString(),
+              })
+            );
+            localStorage.setItem('gm_cloud_uid', user.uid);
+          }
+        } catch {
+          // ignore localStorage quota error
+        }
+      }
       setFirebaseUser(user);
       if (user && user.emailVerified) {
         try {
@@ -306,6 +364,18 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else {
         setIsCloudAdmin(false);
         hasSeededCloudRef.current = false;
+        cloudIdsRef.current = {
+          hasTeacherPublic: false,
+          hasTeacherPrivate: false,
+          classes: new Set(),
+          students: new Set(),
+          contacts: new Set(),
+          materials: new Set(),
+          tasks: new Set(),
+          attendance: new Set(),
+          questionSets: new Set(),
+          submissions: new Set(),
+        };
       }
       setAuthLoading(false);
     });
@@ -316,186 +386,397 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [checkUserAdminStatus]);
 
-  // Seed existing local LMS data into an empty Cloud Firestore on first Admin connection
-  const seedCloudDatabaseIfEmpty = useCallback(async (adminUid: string) => {
-    if (hasSeededCloudRef.current) return;
-    hasSeededCloudRef.current = true;
-
-    try {
-      const pubSnap = await getDoc(doc(db, 'settings', 'teacherPublic'));
-      if (pubSnap.exists()) return;
-
-      const snapshot = latestLocalRef.current;
-      const ops: Array<{ ref: ReturnType<typeof doc>; data: Record<string, unknown> }> = [];
-
-      ops.push({
-        ref: doc(db, 'settings', 'teacherPublic'),
-        data: {
-          name: clampStr(snapshot.teacher.name || 'Guru Mata Pelajaran', 120),
-          subject: clampStr(snapshot.teacher.subject || 'Mata Pelajaran', 120),
-          kktp: typeof snapshot.teacher.kktp === 'number' ? snapshot.teacher.kktp : 75,
-          visibility: 'classroom',
-          ownerUid: adminUid,
-          updatedAt: serverTimestamp(),
-        },
-      });
-
-      const privateData: Record<string, unknown> = {
-        pin: sanitizePin(snapshot.teacher.pin),
-        ownerUid: adminUid,
-        updatedAt: serverTimestamp(),
+  // Phased, rules-compliant dataset uploader to Cloud Firestore
+  const pushDatasetToFirestore = useCallback(
+    async (
+      adminUid: string,
+      dataset: {
+        teacher?: TeacherProfile;
+        classes?: ClassRoom[];
+        students?: Student[];
+        materials?: Material[];
+        tasks?: Task[];
+        submissions?: Submission[];
+        attendance?: AttendanceRecord[];
+        questionSets?: GeneratedQuestionSet[];
+      }
+    ): Promise<{ classes: number; students: number; materials: number; tasks: number; attendance: number; questionSets: number }> => {
+      const toValidId = (raw: unknown, prefix: string, idx: number): string => {
+        const cleaned = String(raw || '').replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 120);
+        return cleaned.length > 0 ? cleaned : `${prefix}_${Date.now()}_${idx}`;
       };
-      if (snapshot.teacher.nip) privateData.nip = clampStr(snapshot.teacher.nip, 50);
-      if (snapshot.teacher.recoveryQuestion) {
-        privateData.recoveryQuestion = clampStr(snapshot.teacher.recoveryQuestion, 200);
-      }
-      if (snapshot.teacher.recoveryAnswer) {
-        privateData.recoveryAnswer = clampStr(snapshot.teacher.recoveryAnswer, 100);
-      }
-      ops.push({
-        ref: doc(db, 'settings', 'teacherPrivate'),
-        data: privateData,
-      });
 
-      const seedClasses = snapshot.classes.length > 0 ? snapshot.classes : initialClasses;
-      const validClassSet = new Set(seedClasses.map((c) => c.id));
-
-      for (const cls of seedClasses) {
-        const clsData: Record<string, unknown> = {
-          name: clampStr(cls.name || 'Kelas', 80),
-          visibility: 'classroom',
-          ownerUid: adminUid,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        };
-        if (cls.whatsappGroupUrl) {
-          clsData.whatsappGroupUrl = clampStr(cls.whatsappGroupUrl, 300);
+      const commitBatchOps = async (
+        ops: Array<{ mode: 'set' | 'update'; ref: ReturnType<typeof doc>; data: Record<string, unknown> }>
+      ) => {
+        const CHUNK_SIZE = 350;
+        for (let i = 0; i < ops.length; i += CHUNK_SIZE) {
+          const batch = writeBatch(db);
+          for (const op of ops.slice(i, i + CHUNK_SIZE)) {
+            if (op.mode === 'update') {
+              batch.update(op.ref, op.data);
+            } else {
+              batch.set(op.ref, op.data);
+            }
+          }
+          await batch.commit();
         }
-        ops.push({ ref: doc(db, 'classes', cls.id), data: clsData });
-      }
+      };
 
-      for (const stu of snapshot.studentsRoster) {
-        const targetClassId = validClassSet.has(stu.classId) ? stu.classId : seedClasses[0].id;
-        ops.push({
-          ref: doc(db, 'students', stu.id),
+      // Phase 1: Teacher settings + Classes (must commit before students/materials/tasks/attendance)
+      const phase1Ops: Array<{ mode: 'set' | 'update'; ref: ReturnType<typeof doc>; data: Record<string, unknown> }> = [];
+      const srcTeacher = dataset.teacher || latestLocalRef.current.teacher;
+
+      const pubSnap = await getDoc(doc(db, 'settings', 'teacherPublic'));
+      const privSnap = await getDoc(doc(db, 'settings', 'teacherPrivate'));
+
+      if (pubSnap.exists()) {
+        phase1Ops.push({
+          mode: 'update',
+          ref: doc(db, 'settings', 'teacherPublic'),
           data: {
-            name: clampStr(stu.name || 'Siswa', 120),
-            classId: targetClassId,
+            name: clampStr(srcTeacher.name || 'Guru Mata Pelajaran', 120),
+            subject: clampStr(srcTeacher.subject || 'Mata Pelajaran', 120),
+            kktp: typeof srcTeacher.kktp === 'number' ? Math.min(100, Math.max(0, srcTeacher.kktp)) : 75,
             visibility: 'classroom',
-            ownerUid: adminUid,
-            createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           },
         });
-        if (stu.whatsapp) {
-          ops.push({
-            ref: doc(db, 'students', stu.id, 'private', 'contact'),
-            data: {
-              whatsapp: clampStr(stu.whatsapp, 30),
-              ownerUid: adminUid,
-              updatedAt: serverTimestamp(),
-            },
-          });
-        }
+      } else {
+        phase1Ops.push({
+          mode: 'set',
+          ref: doc(db, 'settings', 'teacherPublic'),
+          data: {
+            name: clampStr(srcTeacher.name || 'Guru Mata Pelajaran', 120),
+            subject: clampStr(srcTeacher.subject || 'Mata Pelajaran', 120),
+            kktp: typeof srcTeacher.kktp === 'number' ? Math.min(100, Math.max(0, srcTeacher.kktp)) : 75,
+            visibility: 'classroom',
+            ownerUid: adminUid,
+            updatedAt: serverTimestamp(),
+          },
+        });
       }
 
-      for (const mat of snapshot.materials) {
-        const classId = mat.classId === 'all' || validClassSet.has(mat.classId) ? mat.classId : seedClasses[0].id;
-        const matData: Record<string, unknown> = {
+      const privData: Record<string, unknown> = {
+        pin: sanitizePin(srcTeacher.pin),
+        updatedAt: serverTimestamp(),
+      };
+      if (srcTeacher.nip) privData.nip = clampStr(srcTeacher.nip, 50);
+      if (srcTeacher.recoveryQuestion) privData.recoveryQuestion = clampStr(srcTeacher.recoveryQuestion, 200);
+      if (srcTeacher.recoveryAnswer) privData.recoveryAnswer = clampStr(srcTeacher.recoveryAnswer, 100);
+      if (privSnap.exists()) {
+        phase1Ops.push({
+          mode: 'update',
+          ref: doc(db, 'settings', 'teacherPrivate'),
+          data: privData,
+        });
+      } else {
+        phase1Ops.push({
+          mode: 'set',
+          ref: doc(db, 'settings', 'teacherPrivate'),
+          data: { ...privData, ownerUid: adminUid },
+        });
+      }
+
+      const inputClasses = Array.isArray(dataset.classes) && dataset.classes.length > 0 ? dataset.classes : initialClasses;
+      const classIdMap = new Map<string, string>();
+      const validClassIds = new Set<string>();
+
+      inputClasses.forEach((cls, idx) => {
+        const cid = toValidId(cls.id, 'c', idx);
+        classIdMap.set(cls.id, cid);
+        validClassIds.add(cid);
+        const exists = cloudIdsRef.current.classes.has(cid);
+        const baseCls: Record<string, unknown> = {
+          name: clampStr(cls.name || 'Kelas', 80),
+          visibility: 'classroom',
+          updatedAt: serverTimestamp(),
+        };
+        if (cls.whatsappGroupUrl) baseCls.whatsappGroupUrl = clampStr(cls.whatsappGroupUrl, 300);
+
+        if (exists) {
+          phase1Ops.push({ mode: 'update', ref: doc(db, 'classes', cid), data: baseCls });
+        } else {
+          phase1Ops.push({
+            mode: 'set',
+            ref: doc(db, 'classes', cid),
+            data: { ...baseCls, ownerUid: adminUid, createdAt: serverTimestamp() },
+          });
+        }
+      });
+
+      await commitBatchOps(phase1Ops);
+
+      // Phase 2: Students + Contacts, Materials, Tasks, Attendance, QuestionSets
+      const phase2Ops: Array<{ mode: 'set' | 'update'; ref: ReturnType<typeof doc>; data: Record<string, unknown> }> = [];
+      const fallbackClassId =
+        Array.from(validClassIds)[0] || Array.from(cloudIdsRef.current.classes)[0] || 'c1';
+      const isKnownClass = (cid: string) => validClassIds.has(cid) || cloudIdsRef.current.classes.has(cid);
+
+      const inputStudents = Array.isArray(dataset.students) ? dataset.students : [];
+      const studentIdMap = new Map<string, string>();
+      const validStudentIds = new Set<string>();
+
+      inputStudents.forEach((stu, idx) => {
+        const sid = toValidId(stu.id, 's', idx);
+        studentIdMap.set(stu.id, sid);
+        validStudentIds.add(sid);
+        const mappedClassId = classIdMap.get(stu.classId) || stu.classId;
+        const targetClassId = isKnownClass(mappedClassId) ? mappedClassId : fallbackClassId;
+        const exists = cloudIdsRef.current.students.has(sid);
+
+        const baseStu: Record<string, unknown> = {
+          name: clampStr(stu.name || 'Siswa', 120),
+          classId: targetClassId,
+          visibility: 'classroom',
+          updatedAt: serverTimestamp(),
+        };
+        if (exists) {
+          phase2Ops.push({ mode: 'update', ref: doc(db, 'students', sid), data: baseStu });
+        } else {
+          phase2Ops.push({
+            mode: 'set',
+            ref: doc(db, 'students', sid),
+            data: { ...baseStu, ownerUid: adminUid, createdAt: serverTimestamp() },
+          });
+        }
+
+        if (stu.whatsapp && stu.whatsapp.trim()) {
+          const contactExists = cloudIdsRef.current.contacts.has(sid);
+          if (contactExists) {
+            phase2Ops.push({
+              mode: 'update',
+              ref: doc(db, 'students', sid, 'private', 'contact'),
+              data: {
+                whatsapp: clampStr(stu.whatsapp.trim(), 30),
+                updatedAt: serverTimestamp(),
+              },
+            });
+          } else {
+            phase2Ops.push({
+              mode: 'set',
+              ref: doc(db, 'students', sid, 'private', 'contact'),
+              data: {
+                whatsapp: clampStr(stu.whatsapp.trim(), 30),
+                ownerUid: adminUid,
+                updatedAt: serverTimestamp(),
+              },
+            });
+          }
+        }
+      });
+
+      const inputMaterials = Array.isArray(dataset.materials) ? dataset.materials : [];
+      inputMaterials.forEach((mat, idx) => {
+        const mid = toValidId(mat.id, 'm', idx);
+        const mappedClassId = mat.classId === 'all' ? 'all' : classIdMap.get(mat.classId) || mat.classId;
+        const classId = mappedClassId === 'all' || isKnownClass(mappedClassId) ? mappedClassId : fallbackClassId;
+        const exists = cloudIdsRef.current.materials.has(mid);
+        const baseMat: Record<string, unknown> = {
           title: clampStr(mat.title || 'Materi', 200),
           content: clampStr(mat.content || '', 20000),
           classId,
           date: clampStr(mat.date || new Date().toISOString().split('T')[0], 30),
           visibility: 'classroom',
-          ownerUid: adminUid,
-          createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         };
-        if (mat.linkUrl) matData.linkUrl = clampStr(mat.linkUrl, 500);
+        if (mat.linkUrl) baseMat.linkUrl = clampStr(mat.linkUrl, 500);
         if (mat.attachment) {
-          matData.attachmentName = clampStr(mat.attachment.name, 200);
-          matData.attachmentSize = clampStr(mat.attachment.size, 40);
-          matData.attachmentType = mat.attachment.type;
+          baseMat.attachmentName = clampStr(mat.attachment.name, 200);
+          baseMat.attachmentSize = clampStr(mat.attachment.size, 40);
+          baseMat.attachmentType = mat.attachment.type;
           if (mat.attachment.dataUrl && mat.attachment.dataUrl.length <= MAX_FIRESTORE_ATTACHMENT_CHARS) {
-            matData.attachmentDataUrl = mat.attachment.dataUrl;
+            baseMat.attachmentDataUrl = mat.attachment.dataUrl;
           }
         }
-        ops.push({ ref: doc(db, 'materials', mat.id), data: matData });
-      }
+        if (exists) {
+          phase2Ops.push({ mode: 'update', ref: doc(db, 'materials', mid), data: baseMat });
+        } else {
+          phase2Ops.push({
+            mode: 'set',
+            ref: doc(db, 'materials', mid),
+            data: { ...baseMat, ownerUid: adminUid, createdAt: serverTimestamp() },
+          });
+        }
+      });
 
-      for (const tsk of snapshot.tasks) {
-        const classId = tsk.classId === 'all' || validClassSet.has(tsk.classId) ? tsk.classId : seedClasses[0].id;
-        const taskData: Record<string, unknown> = {
+      const inputTasks = Array.isArray(dataset.tasks) ? dataset.tasks : [];
+      const taskIdMap = new Map<string, string>();
+      const validTaskIds = new Set<string>();
+
+      inputTasks.forEach((tsk, idx) => {
+        const tid = toValidId(tsk.id, 't', idx);
+        taskIdMap.set(tsk.id, tid);
+        validTaskIds.add(tid);
+        const mappedClassId = tsk.classId === 'all' ? 'all' : classIdMap.get(tsk.classId) || tsk.classId;
+        const classId = mappedClassId === 'all' || isKnownClass(mappedClassId) ? mappedClassId : fallbackClassId;
+        const exists = cloudIdsRef.current.tasks.has(tid);
+        const baseTask: Record<string, unknown> = {
           title: clampStr(tsk.title || 'Tugas', 200),
           instructions: clampStr(tsk.instructions || '', 30000),
           dueDate: clampStr(tsk.dueDate || '', 30),
           classId,
           createdAtStr: clampStr(tsk.createdAt || new Date().toISOString().split('T')[0], 30),
           visibility: 'classroom',
-          ownerUid: adminUid,
-          createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         };
         if (tsk.attachment) {
-          taskData.attachmentName = clampStr(tsk.attachment.name, 200);
-          taskData.attachmentSize = clampStr(tsk.attachment.size, 40);
-          taskData.attachmentType = tsk.attachment.type;
+          baseTask.attachmentName = clampStr(tsk.attachment.name, 200);
+          baseTask.attachmentSize = clampStr(tsk.attachment.size, 40);
+          baseTask.attachmentType = tsk.attachment.type;
           if (tsk.attachment.dataUrl && tsk.attachment.dataUrl.length <= MAX_FIRESTORE_ATTACHMENT_CHARS) {
-            taskData.attachmentDataUrl = tsk.attachment.dataUrl;
+            baseTask.attachmentDataUrl = tsk.attachment.dataUrl;
           }
         }
-        ops.push({ ref: doc(db, 'tasks', tsk.id), data: taskData });
-      }
-
-      for (const att of snapshot.attendance) {
-        if (!validClassSet.has(att.classId)) continue;
-        ops.push({
-          ref: doc(db, 'attendance', att.id),
-          data: {
-            date: clampStr(att.date, 30),
-            classId: att.classId,
-            topic: clampStr(att.topic || 'Pertemuan', 200),
-            records: att.records || {},
-            visibility: 'classroom',
-            ownerUid: adminUid,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          },
-        });
-      }
-
-      for (const qs of snapshot.questionSets) {
-        ops.push({
-          ref: doc(db, 'questionSets', qs.id),
-          data: {
-            title: clampStr(qs.title || 'Paket Soal AI', 200),
-            subject: clampStr(qs.subject || snapshot.teacher.subject || 'Umum', 120),
-            sourceMaterial: clampStr(qs.sourceMaterial || '', 35000),
-            createdAtStr: clampStr(qs.createdAt || new Date().toISOString().split('T')[0], 30),
-            pgCount: Math.min(50, Math.max(0, Math.trunc(qs.pgCount || qs.multipleChoice.length))),
-            essayCount: Math.min(5, Math.max(0, Math.trunc(qs.essayCount || qs.essay.length))),
-            multipleChoice: (qs.multipleChoice || []).slice(0, 50),
-            essay: (qs.essay || []).slice(0, 5),
-            ownerUid: adminUid,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          },
-        });
-      }
-
-      // Commit in batches of max 350 operations
-      const CHUNK_SIZE = 350;
-      for (let i = 0; i < ops.length; i += CHUNK_SIZE) {
-        const batch = writeBatch(db);
-        for (const op of ops.slice(i, i + CHUNK_SIZE)) {
-          batch.set(op.ref, op.data);
+        if (exists) {
+          phase2Ops.push({ mode: 'update', ref: doc(db, 'tasks', tid), data: baseTask });
+        } else {
+          phase2Ops.push({
+            mode: 'set',
+            ref: doc(db, 'tasks', tid),
+            data: { ...baseTask, ownerUid: adminUid, createdAt: serverTimestamp() },
+          });
         }
-        await batch.commit();
+      });
+
+      const inputAttendance = Array.isArray(dataset.attendance) ? dataset.attendance : [];
+      let syncedAttendanceCount = 0;
+      inputAttendance.forEach((att, idx) => {
+        const aid = toValidId(att.id, 'att', idx);
+        const mappedClassId = classIdMap.get(att.classId) || att.classId;
+        if (!isKnownClass(mappedClassId)) return;
+        syncedAttendanceCount++;
+        const exists = cloudIdsRef.current.attendance.has(aid);
+        const baseAtt: Record<string, unknown> = {
+          date: clampStr(att.date, 30),
+          classId: mappedClassId,
+          topic: clampStr(att.topic || 'Pertemuan', 200),
+          records: att.records || {},
+          visibility: 'classroom',
+          updatedAt: serverTimestamp(),
+        };
+        if (exists) {
+          phase2Ops.push({ mode: 'update', ref: doc(db, 'attendance', aid), data: baseAtt });
+        } else {
+          phase2Ops.push({
+            mode: 'set',
+            ref: doc(db, 'attendance', aid),
+            data: { ...baseAtt, ownerUid: adminUid, createdAt: serverTimestamp() },
+          });
+        }
+      });
+
+      const inputQSets = Array.isArray(dataset.questionSets) ? dataset.questionSets : [];
+      inputQSets.forEach((qs, idx) => {
+        const qid = toValidId(qs.id, 'qset', idx);
+        const exists = cloudIdsRef.current.questionSets.has(qid);
+        const baseQs: Record<string, unknown> = {
+          title: clampStr(qs.title || 'Paket Soal AI', 200),
+          subject: clampStr(qs.subject || srcTeacher.subject || 'Umum', 120),
+          sourceMaterial: clampStr(qs.sourceMaterial || '', 35000),
+          createdAtStr: clampStr(qs.createdAt || new Date().toISOString().split('T')[0], 30),
+          pgCount: Math.min(50, Math.max(0, Math.trunc(qs.pgCount || qs.multipleChoice?.length || 0))),
+          essayCount: Math.min(5, Math.max(0, Math.trunc(qs.essayCount || qs.essay?.length || 0))),
+          multipleChoice: (qs.multipleChoice || []).slice(0, 50),
+          essay: (qs.essay || []).slice(0, 5),
+          updatedAt: serverTimestamp(),
+        };
+        if (exists) {
+          phase2Ops.push({ mode: 'update', ref: doc(db, 'questionSets', qid), data: baseQs });
+        } else {
+          phase2Ops.push({
+            mode: 'set',
+            ref: doc(db, 'questionSets', qid),
+            data: { ...baseQs, ownerUid: adminUid, createdAt: serverTimestamp() },
+          });
+        }
+      });
+
+      await commitBatchOps(phase2Ops);
+
+      // Phase 3 & 4: Submissions (only if matching taskId & studentId exist; create without score/note, then grade)
+      const inputSubs = Array.isArray(dataset.submissions) ? dataset.submissions : [];
+      const phase3Ops: Array<{ mode: 'set' | 'update'; ref: ReturnType<typeof doc>; data: Record<string, unknown> }> = [];
+      const phase4Ops: Array<{ mode: 'set' | 'update'; ref: ReturnType<typeof doc>; data: Record<string, unknown> }> = [];
+
+      inputSubs.forEach((sub, idx) => {
+        const subId = toValidId(sub.id, 'sub', idx);
+        const mappedTaskId = taskIdMap.get(sub.taskId) || sub.taskId;
+        const mappedStudentId = studentIdMap.get(sub.studentId) || sub.studentId;
+        const taskOk = validTaskIds.has(mappedTaskId) || cloudIdsRef.current.tasks.has(mappedTaskId);
+        const studentOk = validStudentIds.has(mappedStudentId) || cloudIdsRef.current.students.has(mappedStudentId);
+        if (!taskOk || !studentOk) return;
+
+        const exists = cloudIdsRef.current.submissions.has(subId);
+        if (!exists) {
+          const createSub: Record<string, unknown> = {
+            taskId: mappedTaskId,
+            studentId: mappedStudentId,
+            studentName: clampStr(sub.studentName || 'Siswa', 120),
+            studentUid: adminUid,
+            ownerUid: taskOwnerMapRef.current[mappedTaskId] || adminUid,
+            submittedAt: clampStr(sub.submittedAt || new Date().toISOString().split('T')[0], 40),
+            workText: clampStr(sub.workText || '-', 20000),
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          };
+          if (sub.linkAttachment) createSub.linkAttachment = clampStr(sub.linkAttachment, 500);
+          phase3Ops.push({ mode: 'set', ref: doc(db, 'submissions', subId), data: createSub });
+        }
+
+        if (typeof sub.score === 'number' || (typeof sub.note === 'string' && sub.note.trim())) {
+          const gradePatch: Record<string, unknown> = { updatedAt: serverTimestamp() };
+          if (typeof sub.score === 'number') {
+            gradePatch.score = Math.min(100, Math.max(0, sub.score));
+          }
+          if (typeof sub.note === 'string' && sub.note.trim()) {
+            gradePatch.note = clampStr(sub.note, 1000);
+          }
+          phase4Ops.push({ mode: 'update', ref: doc(db, 'submissions', subId), data: gradePatch });
+        }
+      });
+
+      if (phase3Ops.length > 0) await commitBatchOps(phase3Ops);
+      if (phase4Ops.length > 0) await commitBatchOps(phase4Ops);
+
+      return {
+        classes: inputClasses.length,
+        students: inputStudents.length,
+        materials: inputMaterials.length,
+        tasks: inputTasks.length,
+        attendance: syncedAttendanceCount,
+        questionSets: inputQSets.length,
+      };
+    },
+    []
+  );
+
+  // Seed existing local LMS data into an empty Cloud Firestore on first Admin connection
+  const seedCloudDatabaseIfEmpty = useCallback(
+    async (adminUid: string) => {
+      if (hasSeededCloudRef.current) return;
+      hasSeededCloudRef.current = true;
+
+      try {
+        const pubSnap = await getDoc(doc(db, 'settings', 'teacherPublic'));
+        if (pubSnap.exists()) return;
+
+        const snapshot = latestLocalRef.current;
+        await pushDatasetToFirestore(adminUid, {
+          teacher: snapshot.teacher,
+          classes: snapshot.classes,
+          students: snapshot.studentsRoster,
+          materials: snapshot.materials,
+          tasks: snapshot.tasks,
+          attendance: snapshot.attendance,
+          questionSets: snapshot.questionSets,
+        });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, 'bootstrap_seed');
       }
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'bootstrap_seed');
-    }
-  }, []);
+    },
+    [pushDatasetToFirestore]
+  );
 
   // Trigger seed check when admin logs in
   useEffect(() => {
@@ -515,6 +796,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       onSnapshot(
         doc(db, 'settings', 'teacherPublic'),
         (snap) => {
+          cloudIdsRef.current.hasTeacherPublic = snap.exists();
           if (snap.exists()) {
             const d = snap.data();
             if (typeof d.ownerUid === 'string') {
@@ -537,6 +819,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       onSnapshot(
         query(collection(db, 'classes'), where('visibility', '==', 'classroom')),
         (snap) => {
+          cloudIdsRef.current.classes = new Set(snap.docs.map((d) => d.id));
           const list: ClassRoom[] = snap.docs.map((docSnap) => {
             const d = docSnap.data();
             return {
@@ -559,6 +842,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       onSnapshot(
         query(collection(db, 'students'), where('visibility', '==', 'classroom')),
         (snap) => {
+          cloudIdsRef.current.students = new Set(snap.docs.map((d) => d.id));
           const ownerMap: Record<string, string> = {};
           const claimMap: Record<string, string> = {};
           const list: Student[] = snap.docs.map((docSnap) => {
@@ -584,6 +868,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       onSnapshot(
         query(collection(db, 'materials'), where('visibility', '==', 'classroom')),
         (snap) => {
+          cloudIdsRef.current.materials = new Set(snap.docs.map((d) => d.id));
           const list: Material[] = snap.docs.map((docSnap) => {
             const d = docSnap.data();
             const hasAttachment = Boolean(d.attachmentName);
@@ -632,6 +917,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       onSnapshot(
         query(collection(db, 'tasks'), where('visibility', '==', 'classroom')),
         (snap) => {
+          cloudIdsRef.current.tasks = new Set(snap.docs.map((d) => d.id));
           const ownerMap: Record<string, string> = {};
           const list: Task[] = snap.docs.map((docSnap) => {
             const d = docSnap.data();
@@ -682,6 +968,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       onSnapshot(
         query(collection(db, 'attendance'), where('visibility', '==', 'classroom')),
         (snap) => {
+          cloudIdsRef.current.attendance = new Set(snap.docs.map((d) => d.id));
           const list: AttendanceRecord[] = snap.docs.map((docSnap) => {
             const d = docSnap.data();
             return {
@@ -710,6 +997,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       onSnapshot(
         submissionsQuery,
         (snap) => {
+          cloudIdsRef.current.submissions = new Set(snap.docs.map((d) => d.id));
           const sUidMap: Record<string, string> = {};
           const list: Submission[] = snap.docs.map((docSnap) => {
             const d = docSnap.data();
@@ -740,6 +1028,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         onSnapshot(
           doc(db, 'settings', 'teacherPrivate'),
           (snap) => {
+            cloudIdsRef.current.hasTeacherPrivate = snap.exists();
             if (snap.exists()) {
               const d = snap.data();
               setTeacher((prev) => ({
@@ -766,6 +1055,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         onSnapshot(
           qSetsQuery,
           (snap) => {
+            cloudIdsRef.current.questionSets = new Set(snap.docs.map((d) => d.id));
             const list: GeneratedQuestionSet[] = snap.docs.map((docSnap) => {
               const d = docSnap.data();
               return {
@@ -814,6 +1104,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       onSnapshot(
         doc(db, 'students', studentId, 'private', 'contact'),
         (snap) => {
+          if (snap.exists()) {
+            cloudIdsRef.current.contacts.add(studentId);
+          } else {
+            cloudIdsRef.current.contacts.delete(studentId);
+          }
           const waVal = snap.exists() ? String(snap.data().whatsapp || '') : '';
           setStudentContacts((prev) => {
             if (prev[studentId] === waVal) return prev;
@@ -841,6 +1136,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
       return;
     }
+
+    setCloudAuthErrorCode(code || 'auth/unknown');
 
     if (code === 'auth/popup-blocked') {
       if (!isInIframe) {
@@ -893,7 +1190,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const loginWithGoogleRedirect = async (intendedRole: 'teacher' | 'student'): Promise<void> => {
-    setCloudAuthError(null);
+    clearCloudAuthError();
     try {
       sessionStorage.setItem('gm_google_redirect_role', intendedRole);
       await signInWithGoogleRedirect();
@@ -904,7 +1201,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Authentication Handlers
   const loginWithGoogleAsTeacher = async (): Promise<boolean> => {
-    setCloudAuthError(null);
+    clearCloudAuthError();
     try {
       const user = await signInWithGooglePopup();
       if (!user.emailVerified) {
@@ -930,7 +1227,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const connectGoogleForStudent = async (): Promise<boolean> => {
-    setCloudAuthError(null);
+    clearCloudAuthError();
     try {
       const user = await signInWithGooglePopup();
       if (!user.emailVerified) {
@@ -1012,6 +1309,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const logout = () => {
     setAuthSession(null);
+    localStorage.removeItem('gm_cloud_uid');
     if (firebaseUser) {
       void signOutFirebase();
     }
@@ -1499,22 +1797,228 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     URL.revokeObjectURL(url);
   };
 
-  const importBackup = (jsonContent: string): boolean => {
-    try {
-      const data = JSON.parse(jsonContent);
-      if (!data.classes || !data.students) return false;
-      if (data.teacher) setTeacher(data.teacher);
-      if (Array.isArray(data.classes)) setClasses(data.classes);
-      if (Array.isArray(data.students)) setStudentsRoster(data.students);
-      if (Array.isArray(data.materials)) setMaterials(data.materials);
-      if (Array.isArray(data.tasks)) setTasks(data.tasks);
-      if (Array.isArray(data.submissions)) setSubmissions(data.submissions);
-      if (Array.isArray(data.attendance)) setAttendance(data.attendance);
-      if (Array.isArray(data.questionSets)) setQuestionSets(data.questionSets);
-      return true;
-    } catch {
-      return false;
+  const hydrateAttachmentsForUpload = async (
+    mats: Material[],
+    tsks: Task[]
+  ): Promise<{ materials: Material[]; tasks: Task[] }> => {
+    const hydratedMats = await Promise.all(
+      mats.map(async (m) => {
+        if (m.attachment && !m.attachment.dataUrl) {
+          const url = await getFileAttachment(m.id);
+          if (url) {
+            return { ...m, attachment: { ...m.attachment, dataUrl: url } };
+          }
+        }
+        return m;
+      })
+    );
+    const hydratedTasks = await Promise.all(
+      tsks.map(async (t) => {
+        if (t.attachment && !t.attachment.dataUrl) {
+          const url = await getFileAttachment(t.id);
+          if (url) {
+            return { ...t, attachment: { ...t.attachment, dataUrl: url } };
+          }
+        }
+        return t;
+      })
+    );
+    return { materials: hydratedMats, tasks: hydratedTasks };
+  };
+
+  const syncLocalDataToCloud = async (): Promise<{ ok: boolean; message: string }> => {
+    if (!firebaseUser || !firebaseUser.emailVerified || !isCloudAdmin) {
+      return {
+        ok: false,
+        message:
+          'Masuk terlebih dahulu lewat tombol "Masuk Guru via Google (Database Cloud)" di halaman login agar data lokal dapat diunggah ke Firestore.',
+      };
     }
+
+    const precloud = safeParse<{
+      teacher?: TeacherProfile;
+      classes?: ClassRoom[];
+      students?: Student[];
+      materials?: Material[];
+      tasks?: Task[];
+      submissions?: Submission[];
+      attendance?: AttendanceRecord[];
+      questionSets?: GeneratedQuestionSet[];
+    } | null>('gm_precloud_backup', null);
+
+    const localTeacher = precloud?.teacher || safeParse('gm_teacher', teacher);
+    const localClasses =
+      Array.isArray(precloud?.classes) && precloud.classes.length > 0
+        ? precloud.classes
+        : safeParse<ClassRoom[]>('gm_classes', classes);
+    const localStudents =
+      Array.isArray(precloud?.students) && precloud.students.length > 0
+        ? precloud.students
+        : safeParse<Student[]>('gm_students', students);
+    const rawMaterials =
+      Array.isArray(precloud?.materials) && precloud.materials.length > 0
+        ? precloud.materials
+        : safeParse<Material[]>('gm_materials', materials);
+    const rawTasks =
+      Array.isArray(precloud?.tasks) && precloud.tasks.length > 0
+        ? precloud.tasks
+        : safeParse<Task[]>('gm_tasks', tasks);
+    const localSubmissions =
+      Array.isArray(precloud?.submissions) && precloud.submissions.length > 0
+        ? precloud.submissions
+        : safeParse<Submission[]>('gm_submissions', submissions);
+    const localAttendance =
+      Array.isArray(precloud?.attendance) && precloud.attendance.length > 0
+        ? precloud.attendance
+        : safeParse<AttendanceRecord[]>('gm_attendance', attendance);
+    const localQSets =
+      Array.isArray(precloud?.questionSets) && precloud.questionSets.length > 0
+        ? precloud.questionSets
+        : safeParse<GeneratedQuestionSet[]>('gm_ai_questions', questionSets);
+
+    try {
+      const hydrated = await hydrateAttachmentsForUpload(rawMaterials, rawTasks);
+      const stats = await pushDatasetToFirestore(firebaseUser.uid, {
+        teacher: localTeacher,
+        classes: localClasses,
+        students: localStudents,
+        materials: hydrated.materials,
+        tasks: hydrated.tasks,
+        submissions: localSubmissions,
+        attendance: localAttendance,
+        questionSets: localQSets,
+      });
+
+      return {
+        ok: true,
+        message: `Berhasil mengunggah data lokal browser ke Database Cloud (${stats.classes} kelas, ${stats.students} siswa, ${stats.materials} materi, ${stats.tasks} tugas, ${stats.attendance} absensi, ${stats.questionSets} soal AI).`,
+      };
+    } catch (error) {
+      let errMsg = 'Terjadi kesalahan saat mengunggah data ke Database Cloud.';
+      try {
+        handleFirestoreError(error, OperationType.WRITE, 'sync_local_to_cloud');
+      } catch (wrapped) {
+        if (wrapped instanceof Error) {
+          errMsg = `Gagal mengunggah ke Cloud Firestore: ${error instanceof Error ? error.message : wrapped.message}`;
+        }
+      }
+      return { ok: false, message: errMsg };
+    }
+  };
+
+  const importBackup = async (jsonContent: string): Promise<{ ok: boolean; message: string }> => {
+    let data: {
+      teacher?: TeacherProfile;
+      classes?: ClassRoom[];
+      students?: Student[];
+      materials?: Material[];
+      tasks?: Task[];
+      submissions?: Submission[];
+      attendance?: AttendanceRecord[];
+      questionSets?: GeneratedQuestionSet[];
+    };
+
+    try {
+      data = JSON.parse(jsonContent);
+    } catch {
+      return {
+        ok: false,
+        message: 'File backup bukan format JSON yang valid.',
+      };
+    }
+
+    if (!data || !Array.isArray(data.classes) || !Array.isArray(data.students)) {
+      return {
+        ok: false,
+        message: 'Struktur file backup tidak lengkap (data kelas atau siswa tidak ditemukan).',
+      };
+    }
+
+    if (data.teacher) setTeacher(data.teacher);
+    setClasses(data.classes);
+    setStudentsRoster(data.students);
+
+    const nextContacts: Record<string, string> = {};
+    data.students.forEach((s) => {
+      if (s.whatsapp && s.whatsapp.trim()) {
+        nextContacts[s.id] = s.whatsapp.trim();
+      }
+    });
+    setStudentContacts(nextContacts);
+
+    const restoredMaterials = Array.isArray(data.materials) ? data.materials : [];
+    const restoredTasks = Array.isArray(data.tasks) ? data.tasks : [];
+    const restoredSubmissions = Array.isArray(data.submissions) ? data.submissions : [];
+    const restoredAttendance = Array.isArray(data.attendance) ? data.attendance : [];
+    const restoredQSets = Array.isArray(data.questionSets) ? data.questionSets : [];
+
+    restoredMaterials.forEach((m) => {
+      if (m.attachment?.dataUrl) saveFileAttachment(m.id, m.attachment.dataUrl);
+    });
+    restoredTasks.forEach((t) => {
+      if (t.attachment?.dataUrl) saveFileAttachment(t.id, t.attachment.dataUrl);
+    });
+
+    setMaterials(restoredMaterials);
+    setTasks(restoredTasks);
+    setSubmissions(restoredSubmissions);
+    setAttendance(restoredAttendance);
+    setQuestionSets(restoredQSets);
+
+    // Save to gm_precloud_backup so it stays available even before cloud login
+    try {
+      localStorage.setItem(
+        'gm_precloud_backup',
+        JSON.stringify({
+          teacher: data.teacher || teacher,
+          classes: data.classes,
+          students: data.students,
+          materials: restoredMaterials,
+          tasks: restoredTasks,
+          submissions: restoredSubmissions,
+          attendance: restoredAttendance,
+          questionSets: restoredQSets,
+          savedAt: new Date().toISOString(),
+        })
+      );
+    } catch {
+      // ignore quota limits
+    }
+
+    if (firebaseUser && firebaseUser.emailVerified && isCloudAdmin) {
+      try {
+        const stats = await pushDatasetToFirestore(firebaseUser.uid, {
+          teacher: data.teacher || teacher,
+          classes: data.classes,
+          students: data.students,
+          materials: restoredMaterials,
+          tasks: restoredTasks,
+          submissions: restoredSubmissions,
+          attendance: restoredAttendance,
+          questionSets: restoredQSets,
+        });
+        return {
+          ok: true,
+          message: `Data backup berhasil dipulihkan & disimpan ke Database Cloud (${stats.classes} kelas, ${stats.students} siswa, ${stats.materials} materi, ${stats.tasks} tugas, ${stats.attendance} absensi, ${stats.questionSets} soal AI)!`,
+        };
+      } catch (error) {
+        try {
+          handleFirestoreError(error, OperationType.WRITE, 'import_backup');
+        } catch {
+          // logged structured error above
+        }
+        return {
+          ok: false,
+          message: `Data sudah dimuat di browser ini, tetapi gagal diunggah ke Database Cloud: ${error instanceof Error ? error.message : String(error)}`,
+        };
+      }
+    }
+
+    return {
+      ok: true,
+      message:
+        'Data berhasil dipulihkan ke browser lokal! Masuk sebagai Guru via Google untuk menyinkronkannya ke Database Cloud.',
+    };
   };
 
   const addMaterial = (item: Omit<Material, 'id' | 'date'>) => {
@@ -1850,6 +2354,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isCloudConnected,
         isInIframe,
         cloudAuthError,
+        cloudAuthErrorCode,
         clearCloudAuthError,
         authSession,
         loginAsTeacher,
@@ -1873,6 +2378,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteStudent,
         exportBackup,
         importBackup,
+        syncLocalDataToCloud,
         addMaterial,
         deleteMaterial,
         addTask,

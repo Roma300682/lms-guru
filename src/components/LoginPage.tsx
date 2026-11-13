@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useLMS } from '../context/LMSContext';
-import { GraduationCap, User, Lock, ArrowRight, Check, AlertCircle, Cloud, MessageCircle, Loader2, LogIn, ExternalLink } from 'lucide-react';
+import { GraduationCap, User, Lock, ArrowRight, Check, AlertCircle, Cloud, MessageCircle, Loader2, LogIn, ExternalLink, Copy } from 'lucide-react';
 import { DeployGuideModal } from './modals/DeployGuideModal';
 import { ForgotPasswordModal } from './modals/ForgotPasswordModal';
 import { normalizeWhatsAppNumber } from '../utils/whatsapp';
+import firebaseConfig from '../../firebase-applet-config.json';
 
 export const LoginPage: React.FC = () => {
   const {
@@ -19,8 +20,20 @@ export const LoginPage: React.FC = () => {
     isCloudConnected,
     isInIframe,
     cloudAuthError,
+    cloudAuthErrorCode,
     clearCloudAuthError,
   } = useLMS();
+  const [copiedHost, setCopiedHost] = useState(false);
+
+  const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
+  const firebaseAuthSettingsUrl = `https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`;
+
+  const handleCopyHost = () => {
+    if (!currentHost) return;
+    navigator.clipboard.writeText(currentHost);
+    setCopiedHost(true);
+    setTimeout(() => setCopiedHost(false), 2000);
+  };
 
   const [role, setRole] = useState<'teacher' | 'student'>('teacher');
   const [isDeployGuideOpen, setIsDeployGuideOpen] = useState(false);
@@ -203,7 +216,27 @@ export const LoginPage: React.FC = () => {
                     <span>{cloudAuthError}</span>
                   </div>
                   <div className="flex flex-wrap gap-2 pt-0.5">
-                    {isInIframe ? (
+                    {cloudAuthErrorCode === 'auth/unauthorized-domain' ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleCopyHost}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-slate-800 bg-white border border-rose-200 hover:bg-slate-50 rounded-lg transition-colors"
+                        >
+                          {copiedHost ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                          <span>{copiedHost ? 'Domain Tersalin!' : `Salin: ${currentHost}`}</span>
+                        </button>
+                        <a
+                          href={firebaseAuthSettingsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>Buka Authorized Domains Firebase</span>
+                        </a>
+                      </>
+                    ) : isInIframe ? (
                       <a
                         href={typeof window !== 'undefined' ? window.location.href : '#'}
                         target="_blank"
@@ -323,7 +356,27 @@ export const LoginPage: React.FC = () => {
                     <span>{cloudAuthError}</span>
                   </div>
                   <div className="flex flex-wrap gap-2 pt-0.5">
-                    {isInIframe ? (
+                    {cloudAuthErrorCode === 'auth/unauthorized-domain' ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleCopyHost}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-slate-800 bg-white border border-rose-200 hover:bg-slate-50 rounded-lg transition-colors"
+                        >
+                          {copiedHost ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                          <span>{copiedHost ? 'Domain Tersalin!' : `Salin: ${currentHost}`}</span>
+                        </button>
+                        <a
+                          href={firebaseAuthSettingsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg transition-colors"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>Buka Authorized Domains Firebase</span>
+                        </a>
+                      </>
+                    ) : isInIframe ? (
                       <a
                         href={typeof window !== 'undefined' ? window.location.href : '#'}
                         target="_blank"

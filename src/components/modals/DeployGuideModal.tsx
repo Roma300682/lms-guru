@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Check, Copy, ExternalLink, Zap, Globe, ArrowRight } from 'lucide-react';
+import firebaseConfig from '../../../firebase-applet-config.json';
 
 interface DeployGuideModalProps {
   isOpen: boolean;
@@ -138,8 +139,32 @@ export const DeployGuideModal: React.FC<DeployGuideModalProps> = ({ isOpen, onCl
                 </p>
               </div>
 
+              <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 text-amber-900 text-[11px] space-y-1.5">
+                <strong className="block">Penting Setelah Deploy ke Vercel (Agar Login Google &amp; Database Aktif):</strong>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>
+                    Salin domain Vercel Anda (misal <code className="font-mono bg-white px-1 rounded border border-amber-200">lms-guru-kappa.vercel.app</code>).
+                  </li>
+                  <li>
+                    Buka{' '}
+                    <a
+                      href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-indigo-700 font-semibold underline inline-flex items-center gap-0.5"
+                    >
+                      Firebase Console &rarr; Authentication &rarr; Authorized domains <ExternalLink className="w-3 h-3" />
+                    </a>
+                    , klik <strong>Add domain</strong>, lalu tempel domain Vercel Anda.
+                  </li>
+                  <li>
+                    Di Dashboard Vercel &rarr; <strong>Settings &rarr; Environment Variables</strong>, tambahkan <code className="font-mono bg-white px-1 rounded border border-amber-200">GEMINI_API_KEY</code> agar fitur <strong>Buat Soal AI</strong> berjalan di Vercel.
+                  </li>
+                </ol>
+              </div>
+
               <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-[11px] text-slate-500">
-                ✅ Konfigurasi <strong>vercel.json</strong> sudah siap di dalam proyek untuk menangani routing SPA tanpa perlu setting manual.
+                Konfigurasi <strong>vercel.json</strong> sudah siap di dalam proyek untuk menangani routing SPA dan API secara otomatis.
               </div>
             </div>
           ) : (
