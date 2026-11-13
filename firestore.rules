@@ -98,9 +98,10 @@ service cloud.firestore {
 
     function isValidStudent(data) {
       return data.keys().hasAll(['name', 'classId', 'visibility', 'ownerUid', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['name', 'classId', 'claimedByUid', 'visibility', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['name', 'classId', 'phoneHash', 'claimedByUid', 'visibility', 'ownerUid', 'createdAt', 'updatedAt'])
         && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
         && isValidId(data.classId)
+        && (!('phoneHash' in data) || (data.phoneHash is string && data.phoneHash.size() <= 80))
         && (!('claimedByUid' in data) || (data.claimedByUid is string && data.claimedByUid.size() <= 128))
         && data.visibility == 'classroom'
         && isValidId(data.ownerUid)
@@ -346,7 +347,7 @@ service cloud.firestore {
         && (
           (isAdmin()
             && exists(/databases/$(database)/documents/classes/$(incoming().classId))
-            && diffKeys().hasOnly(['name', 'classId', 'claimedByUid', 'visibility', 'updatedAt']))
+            && diffKeys().hasOnly(['name', 'classId', 'phoneHash', 'claimedByUid', 'visibility', 'updatedAt']))
           || (isStudentSession()
             && diffKeys().hasOnly(['claimedByUid', 'updatedAt'])
             && incoming().claimedByUid == request.auth.uid

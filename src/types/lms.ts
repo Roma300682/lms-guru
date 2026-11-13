@@ -5,6 +5,7 @@ export interface Student {
   name: string;
   classId: string;
   whatsapp?: string; // Nomor WhatsApp siswa / orang tua (cth: 081234567890)
+  phoneHash?: string; // Hash SHA-256 nomor HP ter-normalisasi untuk verifikasi login siswa
 }
 
 export interface ClassRoom {

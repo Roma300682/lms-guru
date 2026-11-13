@@ -58,6 +58,8 @@ import {
   deleteFileAttachment,
 } from '../utils/fileStorage';
 import { parseSubjects, getPrimarySubject } from '../utils/subjects';
+import { hashStudentPhone, parseStudentLinkParams } from '../utils/phoneAuth';
+import { normalizeWhatsAppNumber } from '../utils/whatsapp';
 
 interface LMSContextType {
   // State
@@ -97,7 +99,7 @@ interface LMSContextType {
   loginWithGoogleAsTeacher: () => Promise<boolean>;
   connectGoogleForStudent: () => Promise<boolean>;
   loginWithGoogleRedirect: (intendedRole: 'teacher' | 'student') => Promise<void>;
-  loginAsStudent: (studentId: string, whatsapp?: string) => void;
+  loginAsStudent: (studentId: string, whatsapp?: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
   resetTeacherPin: (newPin: string) => void;
 
@@ -234,17 +236,27 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeSubject, setActiveSubject] = useState<string>('all');
   const [viewMode, setViewModeState] = useState<'teacher' | 'student'>('student');
   const [currentStudentId, setCurrentStudentId] = useState<string>(() => {
-    const saved = safeParse<{ role?: string; studentId?: string } | null>('gm_student_session', null);
-    if (saved?.role === 'student' && typeof saved.studentId === 'string' && saved.studentId) {
+    const linkParams = parseStudentLinkParams();
+    const saved = safeParse<{ role?: string; studentId?: string; phoneHash?: string } | null>('gm_student_session', null);
+    if (linkParams.studentId && saved?.studentId && saved.studentId !== linkParams.studentId) {
+      localStorage.removeItem('gm_student_session');
+      return linkParams.studentId;
+    }
+    if (saved?.role === 'student' && typeof saved.studentId === 'string' && saved.studentId && saved.phoneHash) {
       return saved.studentId;
     }
-    return 's1';
+    return linkParams.studentId || 's1';
   });
 
   const [authSession, setAuthSession] = useState<AuthSession | null>(() => {
     localStorage.removeItem('gm_session');
-    const saved = safeParse<{ role?: string; studentId?: string } | null>('gm_student_session', null);
-    if (saved?.role === 'student' && typeof saved.studentId === 'string' && saved.studentId) {
+    const linkParams = parseStudentLinkParams();
+    const saved = safeParse<{ role?: string; studentId?: string; phoneHash?: string } | null>('gm_student_session', null);
+    if (linkParams.studentId && saved?.studentId !== linkParams.studentId) {
+      localStorage.removeItem('gm_student_session');
+      return null;
+    }
+    if (saved?.role === 'student' && typeof saved.studentId === 'string' && saved.studentId && saved.phoneHash) {
       return { role: 'student', studentId: saved.studentId };
     }
     return null;
@@ -269,6 +281,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const cbtExamOwnerMapRef = useRef<Record<string, string>>({});
   const submissionStudentUidMapRef = useRef<Record<string, string>>({});
   const pendingClassWritesRef = useRef<Record<string, Promise<void>>>({});
+  const backfilledPhoneHashesRef = useRef<Record<string, string>>({});
   const hasSeededCloudRef = useRef<boolean>(false);
   const isSeedingCloudRef = useRef<boolean>(false);
   const cloudIdsRef = useRef<{
@@ -727,13 +740,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const studentIdMap = new Map<string, string>();
       const validStudentIds = new Set<string>();
 
-      inputStudents.forEach((stu, idx) => {
+      for (let idx = 0; idx < inputStudents.length; idx++) {
+        const stu = inputStudents[idx];
         const sid = toValidId(stu.id, 's', idx);
         studentIdMap.set(stu.id, sid);
         validStudentIds.add(sid);
         const mappedClassId = classIdMap.get(stu.classId) || stu.classId;
         const targetClassId = isKnownClass(mappedClassId) ? mappedClassId : fallbackClassId;
         const exists = cloudIdsRef.current.students.has(sid);
+        const computedHash = stu.whatsapp ? await hashStudentPhone(stu.whatsapp) : stu.phoneHash || '';
 
         const baseStu: Record<string, unknown> = {
           name: clampStr(stu.name || 'Siswa', 120),
@@ -741,6 +756,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           visibility: 'classroom',
           updatedAt: serverTimestamp(),
         };
+        if (computedHash) {
+          baseStu.phoneHash = computedHash;
+        }
         if (exists) {
           phase2Ops.push({ mode: 'update', ref: doc(db, 'students', sid), data: baseStu });
         } else {
@@ -774,7 +792,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             });
           }
         }
-      });
+      }
 
       const inputMaterials = Array.isArray(dataset.materials) ? dataset.materials : [];
       inputMaterials.forEach((mat, idx) => {
@@ -1080,6 +1098,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               id: docSnap.id,
               name: d.name || '',
               classId: d.classId || '',
+              phoneHash: typeof d.phoneHash === 'string' && d.phoneHash ? d.phoneHash : undefined,
             };
           });
           studentOwnerMapRef.current = ownerMap;
@@ -1454,6 +1473,58 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [firebaseUser, isCloudAdmin, canAccessStudentCloud, studentsRoster, authSession?.role, currentStudentId]);
 
+  // Auto-backfill phoneHash on /students/{id} when admin loads private/contact records
+  useEffect(() => {
+    if (!firebaseUser || !firebaseUser.emailVerified || !isCloudAdmin || authSession?.role !== 'teacher') {
+      return;
+    }
+    let cancelled = false;
+    const syncMissingHashes = async () => {
+      const updates: Array<{ id: string; hash: string }> = [];
+      for (const stu of studentsRoster) {
+        const rawWa = studentContacts[stu.id];
+        if (!rawWa || !normalizeWhatsAppNumber(rawWa)) continue;
+        const expectedHash = await hashStudentPhone(rawWa);
+        if (!expectedHash) continue;
+        if (stu.phoneHash !== expectedHash && backfilledPhoneHashesRef.current[stu.id] !== expectedHash) {
+          updates.push({ id: stu.id, hash: expectedHash });
+        }
+      }
+      if (cancelled || updates.length === 0) return;
+
+      for (let i = 0; i < updates.length; i += 350) {
+        const chunk = updates.slice(i, i + 350);
+        const batch = writeBatch(db);
+        chunk.forEach((u) => {
+          backfilledPhoneHashesRef.current[u.id] = u.hash;
+          batch.update(doc(db, 'students', u.id), {
+            phoneHash: u.hash,
+            updatedAt: serverTimestamp(),
+          });
+        });
+        await batch.commit().catch((err) =>
+          handleFirestoreError(err, OperationType.UPDATE, 'students_phonehash_backfill')
+        );
+      }
+    };
+    void syncMissingHashes();
+    return () => {
+      cancelled = true;
+    };
+  }, [firebaseUser, isCloudAdmin, authSession?.role, studentsRoster, studentContacts]);
+
+  // Enforce session integrity if a restored student session's phoneHash no longer matches roster
+  useEffect(() => {
+    if (authSession?.role !== 'student' || !currentStudentId || studentsRoster.length === 0) return;
+    const saved = safeParse<{ role?: string; studentId?: string; phoneHash?: string } | null>('gm_student_session', null);
+    const stu = studentsRoster.find((s) => s.id === currentStudentId);
+    if (!stu || !saved?.phoneHash || (stu.phoneHash && saved.phoneHash !== stu.phoneHash)) {
+      localStorage.removeItem('gm_student_session');
+      setAuthSession(null);
+      setViewModeState('student');
+    }
+  }, [authSession?.role, currentStudentId, studentsRoster]);
+
   const handleGoogleAuthFailure = async (
     err: unknown,
     intendedRole: 'teacher' | 'student'
@@ -1622,32 +1693,67 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const loginAsStudent = (studentId: string, whatsapp?: string) => {
+  const loginAsStudent = async (
+    studentId: string,
+    whatsapp?: string
+  ): Promise<{ ok: boolean; error?: string }> => {
     clearCloudAuthError();
-    const cleanWa = whatsapp?.trim();
-    if (cleanWa) {
-      setStudentsRoster((prev) =>
-        prev.map((s) => (s.id === studentId ? { ...s, whatsapp: cleanWa } : s))
-      );
-      setStudentContacts((prev) => ({ ...prev, [studentId]: cleanWa }));
+    const cleanWa = whatsapp?.trim() || '';
+    const normalizedWa = normalizeWhatsAppNumber(cleanWa);
+    if (!normalizedWa) {
+      return {
+        ok: false,
+        error: 'Masukkan No. HP / WhatsApp yang valid (contoh: 081234567890).',
+      };
     }
+
+    const targetStudent = studentsRoster.find((s) => s.id === studentId);
+    if (!targetStudent) {
+      return {
+        ok: false,
+        error: 'Data siswa tidak ditemukan. Muat ulang halaman lalu coba lagi.',
+      };
+    }
+
+    const inputHash = await hashStudentPhone(cleanWa);
+    const rawFallbackWa = targetStudent.whatsapp || studentContacts[studentId] || '';
+    const expectedHash =
+      targetStudent.phoneHash || (rawFallbackWa ? await hashStudentPhone(rawFallbackWa) : '');
+
+    if (!expectedHash) {
+      return {
+        ok: false,
+        error:
+          'No. HP untuk akun siswa ini belum didaftarkan oleh guru. Hubungi guru untuk mengisi No. HP Anda di Daftar Siswa.',
+      };
+    }
+
+    if (inputHash !== expectedHash) {
+      return {
+        ok: false,
+        error:
+          'No. HP tidak sesuai dengan akun siswa yang dipilih. Setiap siswa wajib masuk menggunakan No. HP masing-masing.',
+      };
+    }
+
     const session: AuthSession = { role: 'student', studentId };
     setAuthSession(session);
     try {
-      localStorage.setItem('gm_student_session', JSON.stringify(session));
+      localStorage.setItem(
+        'gm_student_session',
+        JSON.stringify({ role: 'student', studentId, phoneHash: inputHash })
+      );
     } catch {
       // ignore localStorage quota error
     }
     setCurrentStudentId(studentId);
     setViewModeState('student');
-    const targetStudent = studentsRoster.find((s) => s.id === studentId);
-    if (targetStudent) {
-      setActiveClassId(targetStudent.classId);
-    }
+    setActiveClassId(targetStudent.classId);
 
     if (canAccessStudentCloud) {
       void syncStudentClaimAndWa(studentId, cleanWa);
     }
+    return { ok: true };
   };
 
   // When a student session becomes synced (anonymous or optional Google), sync their claim & WA
@@ -1990,15 +2096,16 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addStudent = (name: string, classId: string, whatsapp?: string) => {
     if (!isAuthorizedTeacher || !firebaseUser || !name.trim()) return;
     const cleanWa = whatsapp?.trim() || undefined;
+    const studentId = 's_' + Date.now();
     const newStudent: Student = {
-      id: 's_' + Date.now(),
+      id: studentId,
       name: clampStr(name.trim(), 120),
       classId,
       whatsapp: cleanWa,
     };
     setStudentsRoster((prev) => [...prev, newStudent]);
     if (cleanWa) {
-      setStudentContacts((prev) => ({ ...prev, [newStudent.id]: cleanWa }));
+      setStudentContacts((prev) => ({ ...prev, [studentId]: cleanWa }));
     }
 
     const writeStudent = async () => {
@@ -2007,17 +2114,24 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (pendingClass) {
           await pendingClass;
         }
+        const computedHash = cleanWa ? await hashStudentPhone(cleanWa) : '';
+        if (computedHash) {
+          setStudentsRoster((prev) =>
+            prev.map((s) => (s.id === studentId ? { ...s, phoneHash: computedHash } : s))
+          );
+        }
         const batch = writeBatch(db);
-        batch.set(doc(db, 'students', newStudent.id), {
+        batch.set(doc(db, 'students', studentId), {
           name: newStudent.name,
           classId: newStudent.classId,
+          ...(computedHash ? { phoneHash: computedHash } : {}),
           visibility: 'classroom',
           ownerUid: firebaseUser.uid,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
         if (cleanWa) {
-          batch.set(doc(db, 'students', newStudent.id, 'private', 'contact'), {
+          batch.set(doc(db, 'students', studentId, 'private', 'contact'), {
             whatsapp: clampStr(cleanWa, 30),
             ownerUid: firebaseUser.uid,
             updatedAt: serverTimestamp(),
@@ -2025,7 +2139,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         await batch.commit();
       } catch (err) {
-        handleFirestoreError(err, OperationType.CREATE, `students/${newStudent.id}`);
+        handleFirestoreError(err, OperationType.CREATE, `students/${studentId}`);
       }
     };
     void writeStudent();
@@ -2040,39 +2154,49 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const cleanWa = patch.whatsapp.trim();
         setStudentContacts((prev) => ({ ...prev, [id]: cleanWa }));
       }
-      if (patch.name !== undefined || patch.classId !== undefined) {
-        const stuPatch: Record<string, unknown> = { updatedAt: serverTimestamp() };
-        if (patch.name !== undefined) stuPatch.name = clampStr(patch.name.trim() || 'Siswa', 120);
-        if (patch.classId !== undefined) stuPatch.classId = patch.classId;
-        void updateDoc(doc(db, 'students', id), stuPatch).catch((err) =>
-          handleFirestoreError(err, OperationType.UPDATE, `students/${id}`)
-        );
-      }
-      if (patch.whatsapp !== undefined) {
-        const cleanWa = clampStr(patch.whatsapp.trim(), 30);
-        const ownerUid = studentOwnerMapRef.current[id] || firebaseUser.uid;
-        void setDoc(
-          doc(db, 'students', id, 'private', 'contact'),
-          {
-            whatsapp: cleanWa,
-            ownerUid,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        ).catch((err) =>
-          handleFirestoreError(err, OperationType.WRITE, `students/${id}/private/contact`)
-        );
-      }
-    } else if (authSession?.role === 'student' && id === currentStudentId && patch.whatsapp !== undefined) {
-      // Student self-service WhatsApp update (syncs automatically via Anonymous Auth or Google Cloud sync)
-      const cleanWa = patch.whatsapp.trim();
-      setStudentsRoster((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, whatsapp: cleanWa } : s))
-      );
-      setStudentContacts((prev) => ({ ...prev, [id]: cleanWa }));
-      if (canAccessStudentCloud) {
-        void syncStudentClaimAndWa(id, cleanWa);
-      }
+      const runTeacherUpdate = async () => {
+        try {
+          const stuPatch: Record<string, unknown> = { updatedAt: serverTimestamp() };
+          let hasStuPatch = false;
+          if (patch.name !== undefined) {
+            stuPatch.name = clampStr(patch.name.trim() || 'Siswa', 120);
+            hasStuPatch = true;
+          }
+          if (patch.classId !== undefined) {
+            stuPatch.classId = patch.classId;
+            hasStuPatch = true;
+          }
+          if (patch.whatsapp !== undefined) {
+            const cleanWa = clampStr(patch.whatsapp.trim(), 30);
+            const computedHash = cleanWa ? await hashStudentPhone(cleanWa) : '';
+            stuPatch.phoneHash = computedHash || deleteField();
+            hasStuPatch = true;
+            setStudentsRoster((prev) =>
+              prev.map((s) => (s.id === id ? { ...s, phoneHash: computedHash || undefined } : s))
+            );
+            const ownerUid = studentOwnerMapRef.current[id] || firebaseUser.uid;
+            await setDoc(
+              doc(db, 'students', id, 'private', 'contact'),
+              {
+                whatsapp: cleanWa,
+                ownerUid,
+                updatedAt: serverTimestamp(),
+              },
+              { merge: true }
+            ).catch((err) =>
+              handleFirestoreError(err, OperationType.WRITE, `students/${id}/private/contact`)
+            );
+          }
+          if (hasStuPatch) {
+            await updateDoc(doc(db, 'students', id), stuPatch).catch((err) =>
+              handleFirestoreError(err, OperationType.UPDATE, `students/${id}`)
+            );
+          }
+        } catch (err) {
+          handleFirestoreError(err, OperationType.UPDATE, `students/${id}`);
+        }
+      };
+      void runTeacherUpdate();
     }
   };
 
@@ -2136,13 +2260,28 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               .filter((p): p is Promise<void> => Boolean(p))
           );
 
+          const hashes = await Promise.all(
+            toAdd.map((s) => (s.whatsapp ? hashStudentPhone(s.whatsapp) : Promise.resolve('')))
+          );
+          setStudentsRoster((prev) =>
+            prev.map((item) => {
+              const foundIdx = toAdd.findIndex((t) => t.id === item.id);
+              if (foundIdx >= 0 && hashes[foundIdx]) {
+                return { ...item, phoneHash: hashes[foundIdx] };
+              }
+              return item;
+            })
+          );
+
           const ops: Array<{ ref: ReturnType<typeof doc>; data: Record<string, unknown> }> = [];
-          toAdd.forEach((s) => {
+          toAdd.forEach((s, idx) => {
+            const pHash = hashes[idx];
             ops.push({
               ref: doc(db, 'students', s.id),
               data: {
                 name: s.name,
                 classId: s.classId,
+                ...(pHash ? { phoneHash: pHash } : {}),
                 visibility: 'classroom',
                 ownerUid: firebaseUser.uid,
                 createdAt: serverTimestamp(),

@@ -140,6 +140,10 @@
           "maxLength": 128,
           "pattern": "^[a-zA-Z0-9_\\-]+$"
         },
+        "phoneHash": {
+          "type": "string",
+          "maxLength": 80
+        },
         "claimedByUid": {
           "type": "string",
           "maxLength": 128

@@ -360,11 +360,13 @@ export const CbtGuruTab: React.FC<CbtGuruTabProps> = ({ onNavigateToSoalAI }) =>
                 )}
               </div>
 
-              {activeExamCount > 1 && (
+              {activeExamCount >= 1 && (
                 confirmStopAllOpen ? (
                   <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 space-y-2">
                     <div className="text-[11px] font-semibold text-rose-800">
-                      Hentikan semua {activeExamCount} ujian CBT aktif sekaligus?
+                      {activeExamCount === 1
+                        ? 'Hentikan ujian CBT yang sedang aktif?'
+                        : `Hentikan semua ${activeExamCount} ujian CBT aktif sekaligus?`}
                     </div>
                     <div className="flex items-center gap-1.5">
                       <button
@@ -376,7 +378,7 @@ export const CbtGuruTab: React.FC<CbtGuruTabProps> = ({ onNavigateToSoalAI }) =>
                         }}
                         className="flex-1 px-2 py-1 text-[11px] font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded"
                       >
-                        Ya, Hentikan Semua
+                        Ya, Hentikan
                       </button>
                       <button
                         type="button"
@@ -391,10 +393,14 @@ export const CbtGuruTab: React.FC<CbtGuruTabProps> = ({ onNavigateToSoalAI }) =>
                   <button
                     type="button"
                     onClick={() => setConfirmStopAllOpen(true)}
-                    className="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors"
+                    className="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-xs transition-colors"
                   >
                     <StopCircle className="w-3.5 h-3.5" />
-                    <span>Hentikan Semua Ujian Aktif</span>
+                    <span>
+                      {activeExamCount === 1
+                        ? 'Hentikan Ujian Aktif'
+                        : `Hentikan Semua Ujian (${activeExamCount})`}
+                    </span>
                   </button>
                 )
               )}
@@ -454,6 +460,61 @@ export const CbtGuruTab: React.FC<CbtGuruTabProps> = ({ onNavigateToSoalAI }) =>
                         <span className="font-semibold text-indigo-700 font-mono tabular-nums">
                           {attemptCount} hasil
                         </span>
+                      </div>
+
+                      <div
+                        className="pt-1.5 border-t border-slate-200/70 flex items-center justify-between gap-2"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {ex.isActive ? (
+                          confirmStopExamId === ex.id ? (
+                            <div className="w-full flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  toggleCbtExamActive(ex.id, false);
+                                  setConfirmStopExamId(null);
+                                }}
+                                className="flex-1 px-2 py-1 text-[11px] font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded"
+                              >
+                                Ya, Hentikan
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmStopExamId(null)}
+                                className="px-2 py-1 text-[11px] font-medium text-slate-600 bg-white border border-slate-200 rounded"
+                              >
+                                Batal
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedExamId(ex.id);
+                                setConfirmStopExamId(ex.id);
+                                setConfirmDeleteExamId(null);
+                              }}
+                              className="w-full inline-flex items-center justify-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-md transition-colors"
+                            >
+                              <StopCircle className="w-3 h-3" />
+                              <span>Hentikan Ujian</span>
+                            </button>
+                          )
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedExamId(ex.id);
+                              toggleCbtExamActive(ex.id, true);
+                              setConfirmStopExamId(null);
+                            }}
+                            className="w-full inline-flex items-center justify-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-md transition-colors"
+                          >
+                            <PlayCircle className="w-3 h-3" />
+                            <span>Aktifkan Kembali</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   );

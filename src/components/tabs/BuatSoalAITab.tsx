@@ -23,6 +23,7 @@ import {
   CheckCircle2,
   FileText,
   MonitorCheck,
+  StopCircle,
 } from 'lucide-react';
 import { getPrimarySubject } from '../../utils/subjects';
 
@@ -145,6 +146,8 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({
     availableSubjects,
     addTask,
     addCbtExam,
+    cbtExams,
+    toggleCbtExamActive,
     questionSets: savedSets,
     addQuestionSet,
     updateQuestionSet,
@@ -207,6 +210,13 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({
   }, [activeSubject, teacher.subject]);
 
   const activeSet = savedSets.find((s) => s.id === activeSetId) || null;
+  const activeCbtForSet = activeSet
+    ? cbtExams.filter(
+        (ex) =>
+          ex.isActive &&
+          (ex.questionSetId === activeSet.id || ex.title === activeSet.title)
+      )
+    : [];
 
   const handlePgCountChange = (val: string) => {
     if (val === '') {
@@ -1042,6 +1052,60 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({
                         Lihat Hasil CBT di Ruang Guru
                       </button>
                     )}
+                  </div>
+                )}
+
+                {activeCbtForSet.length > 0 && (
+                  <div className="p-3 rounded-xl bg-rose-50/70 border border-rose-200 space-y-2 print:hidden">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-rose-900">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                        <span>
+                          {activeCbtForSet.length} Sesi CBT dari Paket Soal Ini Sedang Aktif untuk Siswa
+                        </span>
+                      </div>
+                      {onNavigateToCbt && (
+                        <button
+                          type="button"
+                          onClick={onNavigateToCbt}
+                          className="text-[11px] font-semibold text-indigo-700 hover:underline"
+                        >
+                          Buka Ruang CBT Guru →
+                        </button>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      {activeCbtForSet.map((ex) => {
+                        const clsLabel =
+                          ex.classId === 'all'
+                            ? 'Semua Kelas'
+                            : classes.find((c) => c.id === ex.classId)?.name || 'Kelas';
+                        return (
+                          <div
+                            key={ex.id}
+                            className="flex flex-wrap items-center justify-between gap-2 bg-white px-3 py-2 rounded-lg border border-rose-200/80 text-xs"
+                          >
+                            <div className="min-w-0">
+                              <span className="font-semibold text-slate-900">{ex.title}</span>
+                              <span className="text-[11px] text-slate-500 ml-2">
+                                ({clsLabel} · {ex.durationMinutes} menit)
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                toggleCbtExamActive(ex.id, false);
+                                setCbtSuccessMsg('');
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-xs transition-colors shrink-0"
+                            >
+                              <StopCircle className="w-3.5 h-3.5" />
+                              <span>Hentikan Ujian CBT</span>
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 

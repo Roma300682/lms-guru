@@ -7,6 +7,7 @@ import {
   personalizeWhatsAppMessage,
 } from '../../utils/whatsapp';
 import { getPrimarySubject } from '../../utils/subjects';
+import { buildStudentPortalLink } from '../../utils/phoneAuth';
 import {
   MessageCircle,
   Send,
@@ -176,12 +177,17 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({ prefill, onClearPrefil
     (filterMode === 'unsubmitted' && tasks.find((t) => t.id === selectedTaskId)?.subject?.trim()) ||
     defaultSubject;
 
-  const buildPersonalizedForStudent = (studentName: string, studentClassId: string) =>
+  const buildPersonalizedForStudent = (
+    studentName: string,
+    studentClassId: string,
+    studentId?: string
+  ) =>
     personalizeWhatsAppMessage(messageTemplate, {
       name: studentName,
       className: getClassName(studentClassId),
       subject: activeContextSubject,
       teacherName: teacher.name,
+      link: buildStudentPortalLink(studentId),
     });
 
   const generalBroadcastMessage = personalizeWhatsAppMessage(messageTemplate, {
@@ -189,6 +195,7 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({ prefill, onClearPrefil
     className: targetClassId === 'all' ? 'Semua Kelas' : getClassName(targetClassId),
     subject: activeContextSubject,
     teacherName: teacher.name,
+    link: buildStudentPortalLink(),
   });
 
   // Template fillers
@@ -263,7 +270,7 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({ prefill, onClearPrefil
         id: s.id,
         name: s.name,
         phone: normalizeWhatsAppNumber(s.whatsapp),
-        message: buildPersonalizedForStudent(s.name, s.classId),
+        message: buildPersonalizedForStudent(s.name, s.classId, s.id),
       }));
 
       const res = await fetch('/api/whatsapp/broadcast', {
@@ -546,7 +553,7 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({ prefill, onClearPrefil
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
                 <span>Sisipkan otomatis:</span>
-                {['{nama}', '{kelas}', '{mapel}', '{guru}'].map((tag) => (
+                {['{nama}', '{kelas}', '{mapel}', '{guru}', '{link}'].map((tag) => (
                   <button
                     key={tag}
                     type="button"
@@ -706,7 +713,11 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({ prefill, onClearPrefil
                   <a
                     href={buildWaMeUrl(
                       nextUnsentStudent.whatsapp,
-                      buildPersonalizedForStudent(nextUnsentStudent.name, nextUnsentStudent.classId)
+                      buildPersonalizedForStudent(
+                        nextUnsentStudent.name,
+                        nextUnsentStudent.classId,
+                        nextUnsentStudent.id
+                      )
                     )}
                     target="_blank"
                     rel="noopener noreferrer"
@@ -815,7 +826,11 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({ prefill, onClearPrefil
                         <a
                           href={buildWaMeUrl(
                             student.whatsapp,
-                            buildPersonalizedForStudent(student.name, student.classId)
+                            buildPersonalizedForStudent(
+                              student.name,
+                              student.classId,
+                              student.id
+                            )
                           )}
                           target="_blank"
                           rel="noopener noreferrer"

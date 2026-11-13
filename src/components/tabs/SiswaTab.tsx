@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useLMS } from '../../context/LMSContext';
-import { Users, Upload, Plus, Trash2, Search, Check, UserCheck, MessageCircle, Edit2 } from 'lucide-react';
+import { Users, Upload, Plus, Trash2, Search, Check, MessageCircle, Edit2, Link2, Lock, Copy } from 'lucide-react';
 import { UploadStudentsModal } from '../modals/UploadStudentsModal';
 import { buildWaMeUrl, normalizeWhatsAppNumber } from '../../utils/whatsapp';
+import { buildStudentPortalLink } from '../../utils/phoneAuth';
 
 export const SiswaTab: React.FC = () => {
   const { students, classes, activeClassId, setActiveClassId, addClass, addStudent, updateStudent, deleteStudent } = useLMS();
@@ -19,6 +20,7 @@ export const SiswaTab: React.FC = () => {
     activeClassId !== 'all' ? activeClassId : classes[0]?.id || ''
   );
   const [importNotification, setImportNotification] = useState<string | null>(null);
+  const [copiedLinkKey, setCopiedLinkKey] = useState<string | null>(null);
 
   // Filter students based on activeClassId
   const filteredByClass =
@@ -74,6 +76,19 @@ export const SiswaTab: React.FC = () => {
     }, 4000);
   };
 
+  const handleCopyStudentLink = async (studentId?: string) => {
+    const key = studentId || 'portal';
+    try {
+      await navigator.clipboard.writeText(buildStudentPortalLink(studentId));
+      setCopiedLinkKey(key);
+      setTimeout(() => {
+        setCopiedLinkKey((prev) => (prev === key ? null : prev));
+      }, 2200);
+    } catch {
+      // Ignore clipboard permission errors silently
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Success Notification Banner */}
@@ -120,6 +135,29 @@ export const SiswaTab: React.FC = () => {
             />
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
           </div>
+
+          <button
+            type="button"
+            onClick={() => handleCopyStudentLink()}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
+              copiedLinkKey === 'portal'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+            }`}
+            title="Salin tautan Portal Siswa (siswa wajib memasukkan No. HP masing-masing saat masuk)"
+          >
+            {copiedLinkKey === 'portal' ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Link Portal Disalin</span>
+              </>
+            ) : (
+              <>
+                <Link2 className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Salin Link Login Siswa</span>
+              </>
+            )}
+          </button>
 
           <button
             type="button"
@@ -271,14 +309,41 @@ export const SiswaTab: React.FC = () => {
                             {student.name}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2 mt-1">
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
                           <span className="inline-block px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
                             {studentClass ? studentClass.name : 'Kelas'}
                           </span>
-                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                            <UserCheck className="w-3 h-3" />
-                            <span>Siap</span>
-                          </span>
+                          {validWa || student.phoneHash ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                              <Lock className="w-3 h-3" />
+                              <span>Terkunci No. HP</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                              <span>Belum Ada No. HP</span>
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleCopyStudentLink(student.id)}
+                            className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border transition-colors ${
+                              copiedLinkKey === student.id
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'
+                            }`}
+                          >
+                            {copiedLinkKey === student.id ? (
+                              <>
+                                <Check className="w-3 h-3" />
+                                <span>Tersalin</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3 h-3" />
+                                <span>Link</span>
+                              </>
+                            )}
+                          </button>
                         </div>
                       </div>
 
@@ -364,7 +429,7 @@ export const SiswaTab: React.FC = () => {
                   <th className="py-3 px-4">Nama Lengkap Siswa</th>
                   <th className="py-3 px-4 w-36">Rombel Kelas</th>
                   <th className="py-3 px-4 w-48">No. WhatsApp</th>
-                  <th className="py-3 px-4 w-28 text-center">Akses Login</th>
+                  <th className="py-3 px-4 w-44 text-center">Kunci Login &amp; Link</th>
                   <th className="py-3 px-4 w-16 text-center">Aksi</th>
                 </tr>
               </thead>
@@ -445,10 +510,43 @@ export const SiswaTab: React.FC = () => {
                         )}
                       </td>
                       <td className="py-2.5 px-4 text-center">
-                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                          <UserCheck className="w-3 h-3" />
-                          <span>Siap</span>
-                        </span>
+                        <div className="inline-flex items-center gap-1.5">
+                          {validWa || student.phoneHash ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                              <Lock className="w-3 h-3" />
+                              <span>Terkunci HP</span>
+                            </span>
+                          ) : (
+                            <span
+                              className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200"
+                              title="Isi No. WhatsApp agar siswa ini bisa login"
+                            >
+                              <span>Belum Ada HP</span>
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleCopyStudentLink(student.id)}
+                            className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded border transition-colors ${
+                              copiedLinkKey === student.id
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : 'bg-white text-indigo-700 border-slate-200 hover:bg-indigo-50 hover:border-indigo-200'
+                            }`}
+                            title="Salin tautan masuk khusus siswa ini (tetap wajib verifikasi No. HP)"
+                          >
+                            {copiedLinkKey === student.id ? (
+                              <>
+                                <Check className="w-3 h-3 text-emerald-600" />
+                                <span>Tersalin</span>
+                              </>
+                            ) : (
+                              <>
+                                <Link2 className="w-3 h-3" />
+                                <span>Link</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
                       </td>
                       <td className="py-2.5 px-4 text-center">
                         <button

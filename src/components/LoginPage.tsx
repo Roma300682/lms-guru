@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLMS } from '../context/LMSContext';
-import { GraduationCap, User, Check, AlertCircle, Cloud, MessageCircle, Loader2, LogIn, ExternalLink, Copy } from 'lucide-react';
+import { GraduationCap, User, Check, AlertCircle, Cloud, MessageCircle, Loader2, LogIn, ExternalLink, Copy, Lock } from 'lucide-react';
 import { DeployGuideModal } from './modals/DeployGuideModal';
 import { normalizeWhatsAppNumber } from '../utils/whatsapp';
+import { parseStudentLinkParams } from '../utils/phoneAuth';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 export const LoginPage: React.FC = () => {
@@ -38,7 +39,11 @@ export const LoginPage: React.FC = () => {
     setTimeout(() => setCopiedHost(false), 2000);
   };
 
+  const linkParams = React.useMemo(() => parseStudentLinkParams(), []);
+  const [lockedLinkStudentId, setLockedLinkStudentId] = useState<string>(linkParams.studentId || '');
+
   const [role, setRole] = useState<'teacher' | 'student'>(() => {
+    if (linkParams.isStudentLink) return 'student';
     try {
       const saved = sessionStorage.getItem('gm_login_role_tab');
       return saved === 'student' ? 'student' : 'teacher';
@@ -48,6 +53,7 @@ export const LoginPage: React.FC = () => {
   });
   const [isDeployGuideOpen, setIsDeployGuideOpen] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isVerifyingStudent, setIsVerifyingStudent] = useState(false);
 
   const switchRoleTab = (nextRole: 'teacher' | 'student') => {
     setRole(nextRole);
@@ -88,22 +94,17 @@ export const LoginPage: React.FC = () => {
   };
 
   const initialDraft = readStudentDraft();
-  const hasEditedWaRef = useRef<boolean>(Boolean(initialDraft.whatsapp?.trim()));
 
   const [selectedClassId, setSelectedClassId] = useState<string>(
-    initialDraft.classId || classes[0]?.id || ''
+    linkParams.classId || initialDraft.classId || classes[0]?.id || ''
   );
   const [selectedStudentId, setSelectedStudentId] = useState<string>(
-    initialDraft.studentId || ''
+    linkParams.studentId || initialDraft.studentId || ''
   );
-  const [studentWhatsapp, setStudentWhatsapp] = useState<string>(() => {
-    if (initialDraft.whatsapp) return initialDraft.whatsapp;
-    const initClass = initialDraft.classId || classes[0]?.id || '';
-    const initStu = initialDraft.studentId
-      ? students.find((s) => s.id === initialDraft.studentId)
-      : students.find((s) => s.classId === initClass);
-    return initStu?.whatsapp || '';
-  });
+  // NEVER auto-prefill another student's registered phone number
+  const [studentWhatsapp, setStudentWhatsapp] = useState<string>(
+    initialDraft.whatsapp || ''
+  );
   const [studentWaError, setStudentWaError] = useState('');
 
   const saveStudentDraft = (classId: string, studentId: string, whatsapp: string) => {
@@ -117,33 +118,39 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  const effectiveClassId = classes.some((c) => c.id === selectedClassId)
+  const linkedStudent = lockedLinkStudentId
+    ? students.find((s) => s.id === lockedLinkStudentId) || null
+    : null;
+
+  useEffect(() => {
+    if (linkedStudent) {
+      setSelectedClassId(linkedStudent.classId);
+      setSelectedStudentId(linkedStudent.id);
+    }
+  }, [linkedStudent]);
+
+  const effectiveClassId = linkedStudent
+    ? linkedStudent.classId
+    : classes.some((c) => c.id === selectedClassId)
     ? selectedClassId
     : classes[0]?.id || '';
 
   const classStudents = students.filter((s) => s.classId === effectiveClassId);
-  const effectiveStudentId = classStudents.some((s) => s.id === selectedStudentId)
+  const effectiveStudentId = linkedStudent
+    ? linkedStudent.id
+    : classStudents.some((s) => s.id === selectedStudentId)
     ? selectedStudentId
     : classStudents[0]?.id || '';
 
-  // Keep draft WA intact when Cloud data syncs
-  useEffect(() => {
-    if (!hasEditedWaRef.current && effectiveStudentId) {
-      const found = students.find((s) => s.id === effectiveStudentId);
-      if (found?.whatsapp) {
-        setStudentWhatsapp(found.whatsapp);
-      }
-    }
-  }, [isCloudConnected, isStudentCloudSynced, students, effectiveStudentId]);
+  const effectiveStudentObj = students.find((s) => s.id === effectiveStudentId) || null;
+  const effectiveStudentHasPhone = Boolean(
+    effectiveStudentObj?.phoneHash || normalizeWhatsAppNumber(effectiveStudentObj?.whatsapp)
+  );
 
-  const syncStudentWhatsapp = (studentId: string, nextClassId = effectiveClassId) => {
-    const found = students.find((s) => s.id === studentId);
-    const nextWa = hasEditedWaRef.current ? studentWhatsapp : found?.whatsapp || '';
-    if (!hasEditedWaRef.current) {
-      setStudentWhatsapp(nextWa);
-    }
+  const resetForStudentSelection = (studentId: string, nextClassId = effectiveClassId) => {
+    setStudentWhatsapp('');
     setStudentWaError('');
-    saveStudentDraft(nextClassId, studentId, nextWa);
+    saveStudentDraft(nextClassId, studentId, '');
   };
 
   // Set default student when class changes
@@ -152,7 +159,7 @@ export const LoginPage: React.FC = () => {
     const firstStudentInClass = students.find((s) => s.classId === newClassId);
     const nextId = firstStudentInClass?.id || '';
     setSelectedStudentId(nextId);
-    syncStudentWhatsapp(nextId, newClassId);
+    resetForStudentSelection(nextId, newClassId);
   };
 
   const handleTeacherGoogleLogin = async () => {
@@ -192,24 +199,39 @@ export const LoginPage: React.FC = () => {
     await loginWithGoogleRedirect('student');
   };
 
-  const handleStudentSubmit = (e: React.FormEvent) => {
+  const handleStudentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setStudentWaError('');
     const studentToLogin = effectiveStudentId;
     if (!studentToLogin) return;
 
     const trimmedWa = studentWhatsapp.trim();
-    if (trimmedWa && !normalizeWhatsAppNumber(trimmedWa)) {
+    if (!trimmedWa) {
+      setStudentWaError('Masukkan No. HP / WhatsApp Anda yang terdaftar untuk verifikasi akun.');
+      return;
+    }
+    if (!normalizeWhatsAppNumber(trimmedWa)) {
       setStudentWaError('Format nomor HP / WhatsApp tidak valid. Contoh: 081234567890');
       return;
     }
 
+    setIsVerifyingStudent(true);
     try {
-      sessionStorage.removeItem('gm_student_login_draft');
-    } catch {
-      // ignore
+      const result = await loginAsStudent(studentToLogin, trimmedWa);
+      if (!result.ok) {
+        setStudentWaError(
+          result.error || 'No. HP tidak sesuai dengan akun siswa yang dipilih.'
+        );
+        return;
+      }
+      try {
+        sessionStorage.removeItem('gm_student_login_draft');
+      } catch {
+        // ignore
+      }
+    } finally {
+      setIsVerifyingStudent(false);
     }
-    loginAsStudent(studentToLogin, trimmedWa || undefined);
   };
 
   return (
@@ -257,7 +279,7 @@ export const LoginPage: React.FC = () => {
                 setSelectedStudentId(activeStudentId);
               }
               if (activeStudentId) {
-                syncStudentWhatsapp(activeStudentId);
+                resetForStudentSelection(activeStudentId);
               }
             }}
             className={`flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold rounded-xl transition-all ${
@@ -447,6 +469,40 @@ export const LoginPage: React.FC = () => {
               ) : null}
 
               <form onSubmit={handleStudentSubmit} className="space-y-3.5">
+                {linkedStudent && (
+                  <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-950 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-bold flex items-center gap-1.5 text-emerald-800">
+                        <Lock className="w-3.5 h-3.5 shrink-0" />
+                        <span>Tautan Login Khusus Siswa</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLockedLinkStudentId('');
+                          setStudentWhatsapp('');
+                          setStudentWaError('');
+                          try {
+                            const url = new URL(window.location.href);
+                            url.searchParams.delete('student');
+                            url.searchParams.delete('siswa');
+                            window.history.replaceState({}, '', url.toString());
+                          } catch {
+                            // ignore
+                          }
+                        }}
+                        className="text-[11px] font-semibold text-emerald-700 hover:underline shrink-0"
+                      >
+                        Bukan nama Anda? Ganti
+                      </button>
+                    </div>
+                    <div>
+                      Akun tujuan: <strong>{linkedStudent.name}</strong> (
+                      {classes.find((c) => c.id === linkedStudent.classId)?.name || 'Kelas'}). Masukkan No. HP yang terdaftar untuk membuka akun ini.
+                    </div>
+                  </div>
+                )}
+
                 {classes.length === 0 ? (
                   <div className="bg-amber-50 border border-amber-200 text-amber-800 p-3.5 rounded-xl text-xs">
                     <span className="font-semibold block mb-1">Belum Ada Kelas Terdaftar</span>
@@ -454,7 +510,7 @@ export const LoginPage: React.FC = () => {
                       ? 'Guru belum menambahkan rombel kelas atau mengunggah data siswa ke Database Cloud.'
                       : 'Daftar kelas belum tersedia di browser ini. Aktifkan sinkron otomatis atau hubungkan Google di bawah jika guru membagikan data lewat Cloud.'}
                   </div>
-                ) : (
+                ) : !linkedStudent ? (
                   <>
                     <div>
                       <label className="block text-xs font-medium text-slate-700 mb-1">
@@ -487,7 +543,7 @@ export const LoginPage: React.FC = () => {
                           onChange={(e) => {
                             const nextId = e.target.value;
                             setSelectedStudentId(nextId);
-                            syncStudentWhatsapp(nextId);
+                            resetForStudentSelection(nextId);
                           }}
                           className="w-full text-xs font-medium px-3 py-2.5 border border-slate-300 rounded-xl bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
                         >
@@ -500,24 +556,33 @@ export const LoginPage: React.FC = () => {
                       </div>
                     )}
                   </>
+                ) : null}
+
+                {effectiveStudentObj && !effectiveStudentHasPhone && (
+                  <div className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <span>
+                      No. HP untuk siswa <strong>{effectiveStudentObj.name}</strong> belum didaftarkan oleh guru. Hubungi guru untuk mengisi No. HP Anda agar dapat login.
+                    </span>
+                  </div>
                 )}
 
                 <div>
                   <label className="block text-xs font-medium text-slate-700 mb-1">
-                    No. HP / WhatsApp Aktif (Siswa / Orang Tua)
+                    Verifikasi No. HP / WhatsApp Anda (Wajib Sesuai Data Terdaftar)
                   </label>
                   <div className="relative">
                     <input
                       type="tel"
+                      required
                       value={studentWhatsapp}
                       onChange={(e) => {
                         const val = e.target.value;
-                        hasEditedWaRef.current = val.trim().length > 0;
                         setStudentWhatsapp(val);
                         setStudentWaError('');
                         saveStudentDraft(effectiveClassId, effectiveStudentId, val);
                       }}
-                      placeholder="Contoh: 081234567890"
+                      placeholder="Masukkan No. HP Anda (contoh: 081234567890)"
                       className="w-full text-xs px-3.5 py-2.5 pl-9 border border-slate-300 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-emerald-500 font-mono"
                     />
                     <MessageCircle className="w-4 h-4 text-emerald-600 absolute left-3 top-2.5" />
@@ -528,8 +593,9 @@ export const LoginPage: React.FC = () => {
                       <span>{studentWaError}</span>
                     </p>
                   ) : (
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Tersimpan otomatis untuk menerima info materi &amp; tugas dari guru lewat WhatsApp.
+                    <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
+                      <Lock className="w-3 h-3 text-slate-400 shrink-0" />
+                      <span>Akun terkunci per siswa: hanya dapat dibuka dengan No. HP pemilik akun yang terdaftar.</span>
                     </p>
                   )}
                 </div>
@@ -538,19 +604,33 @@ export const LoginPage: React.FC = () => {
                 <div className="space-y-2 pt-1">
                   <button
                     type="submit"
-                    disabled={classes.length === 0 || classStudents.length === 0}
+                    disabled={
+                      isVerifyingStudent ||
+                      classes.length === 0 ||
+                      classStudents.length === 0 ||
+                      !effectiveStudentId
+                    }
                     className={`w-full flex items-center justify-center gap-2 py-2.5 text-xs font-semibold text-white rounded-xl transition-colors shadow-xs ${
-                      classes.length === 0 || classStudents.length === 0
+                      isVerifyingStudent || classes.length === 0 || classStudents.length === 0 || !effectiveStudentId
                         ? 'bg-slate-300 cursor-not-allowed'
                         : 'bg-emerald-700 hover:bg-emerald-800'
                     }`}
                   >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Masuk ke Ruang Belajar Siswa</span>
+                    {isVerifyingStudent ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Memverifikasi No. HP...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Verifikasi &amp; Masuk Ruang Belajar</span>
+                      </>
+                    )}
                   </button>
 
                   <p className="text-[11px] text-slate-400 text-center">
-                    Pastikan kelas, nama Anda, dan No. HP aktif sudah sesuai lalu klik tombol di atas.
+                    Pastikan nama dan No. HP Anda sesuai data kelas agar tidak membuka akun siswa lain.
                   </p>
                 </div>
 

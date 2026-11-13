@@ -40,8 +40,10 @@ export const StudentPortal: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'materi' | 'tugas' | 'cbt' | 'rekap'>('materi');
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
 
-  // Currently selected student
-  const student = students.find((s) => s.id === currentStudentId) || students[0];
+  // Currently selected student (never fall back to another student when logged in as a student)
+  const student =
+    students.find((s) => s.id === currentStudentId) ||
+    (authSession?.role === 'teacher' ? students[0] : undefined);
   const studentClass = classes.find((c) => c.id === student?.classId);
 
   const teacherSubjects = parseSubjects(teacher.subject);
@@ -211,6 +213,29 @@ export const StudentPortal: React.FC = () => {
     setSubmissionFormError('');
   };
 
+  if (authSession?.role === 'student' && !student) {
+    return (
+      <div className="bg-white rounded-xl border border-slate-200 p-8 text-center space-y-3 max-w-md mx-auto my-8">
+        <AlertCircle className="w-8 h-8 text-amber-600 mx-auto" />
+        <div className="space-y-1">
+          <h3 className="text-sm font-bold text-slate-900">
+            Data Akun Siswa Belum Tersinkron
+          </h3>
+          <p className="text-xs text-slate-500">
+            Akun siswa tidak ditemukan pada daftar kelas saat ini. Silakan kembali ke halaman login dan verifikasi ulang dengan No. HP Anda.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={logout}
+          className="px-4 py-2 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg transition-colors"
+        >
+          Kembali ke Halaman Login
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {authSession?.role === 'student' && !isCloudConnected && !isStudentCloudSynced && (
@@ -350,52 +375,58 @@ export const StudentPortal: React.FC = () => {
         )}
       </div>
 
-      {/* Student WhatsApp Self-Service Card */}
+      {/* Student WhatsApp Info Card */}
       {student && (
-        <div
-          className={`rounded-xl border p-4 transition-colors ${
-            normalizeWhatsAppNumber(student.whatsapp)
-              ? 'bg-white border-slate-200'
-              : 'bg-emerald-50/70 border-emerald-200'
-          }`}
-        >
-          {!normalizeWhatsAppNumber(student.whatsapp) || isEditingWa ? (
-            <form onSubmit={handleSaveMyWa} className="space-y-2.5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-start gap-2">
-                  <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <div>
-                    <h3 className="text-xs font-bold text-slate-900">
-                      {normalizeWhatsAppNumber(student.whatsapp)
-                        ? 'Perbarui Nomor WhatsApp Anda'
-                        : 'Isi Nomor WhatsApp Anda Sekarang'}
-                    </h3>
-                    <p className="text-[11px] text-slate-600">
-                      Nomor ini otomatis tersimpan di daftar guru untuk menerima info materi, tugas, dan pengingat lewat WhatsApp.
-                    </p>
-                  </div>
-                </div>
-              </div>
+        <div className="rounded-xl border p-4 bg-white border-slate-200">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2 flex-wrap">
+              <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span className="text-slate-600">No. HP / WhatsApp Terdaftar (Kunci Login):</span>
+              {normalizeWhatsAppNumber(student.whatsapp) ? (
+                <span className="font-mono font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-200">
+                  {student.whatsapp}
+                </span>
+              ) : (
+                <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-200">
+                  Terverifikasi via No. HP
+                </span>
+              )}
+              {waSavedBanner && (
+                <span className="text-[11px] font-semibold text-emerald-700 flex items-center gap-1">
+                  <CheckCircle className="w-3.5 h-3.5" /> Tersimpan!
+                </span>
+              )}
+            </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="tel"
-                  value={waDraft}
-                  onChange={(e) => {
-                    setWaDraft(e.target.value);
-                    setWaError('');
-                  }}
-                  placeholder="Contoh: 081234567890"
-                  className="flex-1 min-w-[200px] text-xs font-mono px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-                />
+            {authSession?.role === 'teacher' ? (
+              !isEditingWa ? (
                 <button
-                  type="submit"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-xs transition-colors"
+                  type="button"
+                  onClick={() => setIsEditingWa(true)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:text-indigo-700 bg-slate-100 hover:bg-indigo-50 rounded-lg transition-colors"
                 >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Simpan No. WhatsApp</span>
+                  <Edit2 className="w-3 h-3" />
+                  <span>Ubah No. WA (Guru)</span>
                 </button>
-                {isEditingWa && (
+              ) : (
+                <form onSubmit={handleSaveMyWa} className="flex flex-wrap items-center gap-2 mt-2 w-full">
+                  <input
+                    type="tel"
+                    value={waDraft}
+                    onChange={(e) => {
+                      setWaDraft(e.target.value);
+                      setWaError('');
+                    }}
+                    placeholder="Contoh: 081234567890"
+                    className="flex-1 min-w-[180px] text-xs font-mono px-3 py-1.5 border border-slate-300 rounded-lg bg-white"
+                  />
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Simpan</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -403,45 +434,21 @@ export const StudentPortal: React.FC = () => {
                       setWaDraft(student.whatsapp || '');
                       setWaError('');
                     }}
-                    className="px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg"
+                    className="px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
                   >
                     Batal
                   </button>
-                )}
-              </div>
-
-              {waError && (
-                <p className="text-[11px] text-rose-600 flex items-center gap-1">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                  <span>{waError}</span>
-                </p>
-              )}
-            </form>
-          ) : (
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-              <div className="flex items-center gap-2">
-                <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span className="text-slate-600">Nomor WhatsApp Terdaftar:</span>
-                <span className="font-mono font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-200">
-                  {student.whatsapp}
-                </span>
-                {waSavedBanner && (
-                  <span className="text-[11px] font-semibold text-emerald-700 flex items-center gap-1">
-                    <CheckCircle className="w-3.5 h-3.5" /> Tersimpan otomatis ke data guru!
-                  </span>
-                )}
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setIsEditingWa(true)}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:text-indigo-700 bg-slate-100 hover:bg-indigo-50 rounded-lg transition-colors"
-              >
-                <Edit2 className="w-3 h-3" />
-                <span>Ubah No. WA</span>
-              </button>
-            </div>
-          )}
+                  {waError && (
+                    <span className="text-[11px] text-rose-600 w-full">{waError}</span>
+                  )}
+                </form>
+              )
+            ) : (
+              <span className="text-[11px] text-slate-400">
+                Hubungi guru jika ingin mengganti No. HP akun Anda.
+              </span>
+            )}
+          </div>
         </div>
       )}
 

@@ -33,11 +33,13 @@ export function personalizeWhatsAppMessage(
     className: string;
     subject: string;
     teacherName: string;
+    link?: string;
   }
 ): string {
   return template
     .replace(/\{nama\}/gi, vars.name)
     .replace(/\{kelas\}/gi, vars.className)
     .replace(/\{mapel\}/gi, vars.subject)
-    .replace(/\{guru\}/gi, vars.teacherName);
+    .replace(/\{guru\}/gi, vars.teacherName)
+    .replace(/\{link\}/gi, vars.link || '');
 }
