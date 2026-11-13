@@ -188,7 +188,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 
   const [activeClassId, setActiveClassId] = useState<string>('c1');
-  const [viewMode, setViewMode] = useState<'teacher' | 'student'>('teacher');
+  const [viewMode, setViewModeState] = useState<'teacher' | 'student'>('student');
   const [currentStudentId, setCurrentStudentId] = useState<string>('s1');
 
   const [authSession, setAuthSession] = useState<AuthSession | null>(() => {
@@ -304,7 +304,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const adminOk = await checkUserAdminStatus(redirectUser);
           if (!adminOk) {
             setCloudAuthError(
-              `Akun (${redirectUser.email || 'ini'}) bukan Guru/Admin terdaftar. Masuk melalui tab "Masuk Siswa" atau gunakan PIN Guru.`
+              `Akses ditolak: Akun Google (${redirectUser.email || 'ini'}) bukan Guru/Admin terdaftar. Siswa tidak diperbolehkan masuk ke ruang Guru & Admin. Silakan masuk melalui tab "Masuk Siswa".`
             );
             await signOutFirebase();
           }
@@ -354,15 +354,24 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const adminFlag = await checkUserAdminStatus(user);
           if (!active) return;
           setIsCloudAdmin(adminFlag);
-          if (adminFlag && !authSession) {
-            setAuthSession({ role: 'teacher' });
-            setViewMode('teacher');
+          if (adminFlag) {
+            setAuthSession((prev) => prev ?? { role: 'teacher' });
+            setViewModeState('teacher');
+          } else {
+            setAuthSession((prev) => (prev?.role === 'teacher' ? null : prev));
+            setViewModeState('student');
           }
         } catch {
-          if (active) setIsCloudAdmin(false);
+          if (active) {
+            setIsCloudAdmin(false);
+            setAuthSession((prev) => (prev?.role === 'teacher' ? null : prev));
+            setViewModeState('student');
+          }
         }
       } else {
         setIsCloudAdmin(false);
+        setAuthSession(null);
+        setViewModeState('student');
         hasSeededCloudRef.current = false;
         cloudIdsRef.current = {
           hasTeacherPublic: false,
@@ -385,6 +394,32 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubscribe();
     };
   }, [checkUserAdminStatus]);
+
+  // Continuous fail-closed enforcement: students can never hold teacher viewMode or teacher session
+  const setViewMode = useCallback(
+    (mode: 'teacher' | 'student') => {
+      if (mode === 'teacher' && (!isCloudAdmin || !firebaseUser?.emailVerified || authSession?.role !== 'teacher')) {
+        setViewModeState('student');
+        return;
+      }
+      setViewModeState(mode);
+    },
+    [isCloudAdmin, firebaseUser, authSession?.role]
+  );
+
+  useEffect(() => {
+    if (authSession?.role === 'student' && viewMode !== 'student') {
+      setViewModeState('student');
+    }
+    if (
+      authSession?.role === 'teacher' &&
+      !authLoading &&
+      (!firebaseUser || !firebaseUser.emailVerified || !isCloudAdmin)
+    ) {
+      setAuthSession(null);
+      setViewModeState('student');
+    }
+  }, [authSession, firebaseUser, isCloudAdmin, authLoading, viewMode]);
 
   // Phased, rules-compliant dataset uploader to Cloud Firestore
   const pushDatasetToFirestore = useCallback(
@@ -1211,14 +1246,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const adminOk = await checkUserAdminStatus(user);
       if (!adminOk) {
         setCloudAuthError(
-          `Akun (${user.email || 'ini'}) bukan Guru/Admin terdaftar. Masuk melalui tab "Masuk Siswa" atau gunakan PIN Guru.`
+          `Akses ditolak: Akun Google (${user.email || 'ini'}) bukan Guru/Admin terdaftar. Siswa tidak diperbolehkan masuk ke ruang Guru & Admin. Silakan masuk melalui tab "Masuk Siswa".`
         );
         await signOutFirebase();
         return false;
       }
       setIsCloudAdmin(true);
       setAuthSession({ role: 'teacher' });
-      setViewMode('teacher');
+      setViewModeState('teacher');
       return true;
     } catch (err) {
       await handleGoogleAuthFailure(err, 'teacher');
@@ -1241,11 +1276,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const loginAsTeacher = (inputPin: string): boolean => {
-    const validPin = teacher.pin || '1234';
-    if (inputPin.trim() === validPin) {
+  // Disabled local PIN bypass: teacher/admin access strictly requires verified Google Cloud Admin
+  const loginAsTeacher = (_inputPin: string): boolean => {
+    if (firebaseUser && firebaseUser.emailVerified && isCloudAdmin) {
       setAuthSession({ role: 'teacher' });
-      setViewMode('teacher');
+      setViewModeState('teacher');
       return true;
     }
     return false;
@@ -1289,6 +1324,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const loginAsStudent = (studentId: string, whatsapp?: string) => {
+    if (!firebaseUser || !firebaseUser.emailVerified) {
+      setCloudAuthError('Silakan hubungkan akun Google Anda terlebih dahulu di tab Masuk Siswa.');
+      return;
+    }
     const cleanWa = whatsapp?.trim();
     if (cleanWa) {
       setStudentsRoster((prev) =>
@@ -1298,19 +1337,19 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     setAuthSession({ role: 'student', studentId });
     setCurrentStudentId(studentId);
-    setViewMode('student');
+    setViewModeState('student');
     const targetStudent = studentsRoster.find((s) => s.id === studentId);
     if (targetStudent) {
       setActiveClassId(targetStudent.classId);
     }
 
-    if (firebaseUser && firebaseUser.emailVerified) {
-      void syncStudentClaimAndWa(studentId, cleanWa);
-    }
+    void syncStudentClaimAndWa(studentId, cleanWa);
   };
 
   const logout = () => {
     setAuthSession(null);
+    setViewModeState('student');
+    setIsCloudAdmin(false);
     localStorage.removeItem('gm_cloud_uid');
     if (firebaseUser) {
       void signOutFirebase();
@@ -1318,23 +1357,22 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const resetTeacherPin = (newPin: string) => {
+    if (!firebaseUser || !firebaseUser.emailVerified || !isCloudAdmin || authSession?.role !== 'teacher') return;
     const cleanPin = sanitizePin(newPin);
     if (!newPin.trim()) return;
     setTeacher((prev) => ({ ...prev, pin: cleanPin }));
-    if (firebaseUser && isCloudAdmin) {
-      void setDoc(
-        doc(db, 'settings', 'teacherPrivate'),
-        {
-          pin: cleanPin,
-          ...(teacher.nip ? { nip: clampStr(teacher.nip, 50) } : {}),
-          ...(teacher.recoveryQuestion ? { recoveryQuestion: clampStr(teacher.recoveryQuestion, 200) } : {}),
-          ...(teacher.recoveryAnswer ? { recoveryAnswer: clampStr(teacher.recoveryAnswer, 100) } : {}),
-          ownerUid: firebaseUser.uid,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      ).catch((error) => handleFirestoreError(error, OperationType.WRITE, 'settings/teacherPrivate'));
-    }
+    void setDoc(
+      doc(db, 'settings', 'teacherPrivate'),
+      {
+        pin: cleanPin,
+        ...(teacher.nip ? { nip: clampStr(teacher.nip, 50) } : {}),
+        ...(teacher.recoveryQuestion ? { recoveryQuestion: clampStr(teacher.recoveryQuestion, 200) } : {}),
+        ...(teacher.recoveryAnswer ? { recoveryAnswer: clampStr(teacher.recoveryAnswer, 100) } : {}),
+        ownerUid: firebaseUser.uid,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    ).catch((error) => handleFirestoreError(error, OperationType.WRITE, 'settings/teacherPrivate'));
   };
 
   // LocalStorage mirror effects (provides fast cache + offline/demo fallback)
@@ -1463,77 +1501,78 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [attendance]);
 
-  // Actions
+  // Actions (guarded so students can never invoke teacher/admin mutations)
+  const isAuthorizedTeacher = Boolean(
+    firebaseUser && firebaseUser.emailVerified && isCloudAdmin && authSession?.role === 'teacher'
+  );
+
   const updateTeacher = (profile: Partial<TeacherProfile>) => {
+    if (!isAuthorizedTeacher || !firebaseUser) return;
     const next = { ...teacher, ...profile };
     setTeacher(next);
 
-    if (firebaseUser && isCloudAdmin) {
-      void setDoc(
-        doc(db, 'settings', 'teacherPublic'),
-        {
-          name: clampStr(next.name || 'Guru Mapel', 120),
-          subject: clampStr(next.subject || 'Mata Pelajaran', 120),
-          kktp: typeof next.kktp === 'number' ? Math.min(100, Math.max(0, next.kktp)) : 75,
-          visibility: 'classroom',
-          ownerUid: teacherOwnerUidRef.current || firebaseUser.uid,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      ).catch((err) => handleFirestoreError(err, OperationType.WRITE, 'settings/teacherPublic'));
-
-      const privPayload: Record<string, unknown> = {
-        pin: sanitizePin(next.pin),
+    void setDoc(
+      doc(db, 'settings', 'teacherPublic'),
+      {
+        name: clampStr(next.name || 'Guru Mapel', 120),
+        subject: clampStr(next.subject || 'Mata Pelajaran', 120),
+        kktp: typeof next.kktp === 'number' ? Math.min(100, Math.max(0, next.kktp)) : 75,
+        visibility: 'classroom',
         ownerUid: teacherOwnerUidRef.current || firebaseUser.uid,
         updatedAt: serverTimestamp(),
-      };
-      if (next.nip) privPayload.nip = clampStr(next.nip, 50);
-      if (next.recoveryQuestion) privPayload.recoveryQuestion = clampStr(next.recoveryQuestion, 200);
-      if (next.recoveryAnswer) privPayload.recoveryAnswer = clampStr(next.recoveryAnswer, 100);
+      },
+      { merge: true }
+    ).catch((err) => handleFirestoreError(err, OperationType.WRITE, 'settings/teacherPublic'));
 
-      void setDoc(doc(db, 'settings', 'teacherPrivate'), privPayload, { merge: true }).catch((err) =>
-        handleFirestoreError(err, OperationType.WRITE, 'settings/teacherPrivate')
-      );
-    }
+    const privPayload: Record<string, unknown> = {
+      pin: sanitizePin(next.pin),
+      ownerUid: teacherOwnerUidRef.current || firebaseUser.uid,
+      updatedAt: serverTimestamp(),
+    };
+    if (next.nip) privPayload.nip = clampStr(next.nip, 50);
+    if (next.recoveryQuestion) privPayload.recoveryQuestion = clampStr(next.recoveryQuestion, 200);
+    if (next.recoveryAnswer) privPayload.recoveryAnswer = clampStr(next.recoveryAnswer, 100);
+
+    void setDoc(doc(db, 'settings', 'teacherPrivate'), privPayload, { merge: true }).catch((err) =>
+      handleFirestoreError(err, OperationType.WRITE, 'settings/teacherPrivate')
+    );
   };
 
   const addClass = (name: string) => {
-    if (!name.trim()) return;
+    if (!isAuthorizedTeacher || !firebaseUser || !name.trim()) return;
     const newClass: ClassRoom = {
       id: 'c_' + Date.now(),
       name: clampStr(name.trim(), 80),
     };
     setClasses((prev) => [...prev, newClass]);
 
-    if (firebaseUser && isCloudAdmin) {
-      void setDoc(doc(db, 'classes', newClass.id), {
-        name: newClass.name,
-        visibility: 'classroom',
-        ownerUid: firebaseUser.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      }).catch((err) => handleFirestoreError(err, OperationType.CREATE, `classes/${newClass.id}`));
-    }
+    void setDoc(doc(db, 'classes', newClass.id), {
+      name: newClass.name,
+      visibility: 'classroom',
+      ownerUid: firebaseUser.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }).catch((err) => handleFirestoreError(err, OperationType.CREATE, `classes/${newClass.id}`));
   };
 
   const updateClass = (id: string, patch: Partial<Pick<ClassRoom, 'name' | 'whatsappGroupUrl'>>) => {
+    if (!isAuthorizedTeacher) return;
     setClasses((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
 
-    if (firebaseUser && isCloudAdmin) {
-      const payload: Record<string, unknown> = { updatedAt: serverTimestamp() };
-      if (patch.name !== undefined) payload.name = clampStr(patch.name.trim() || 'Kelas', 80);
-      if (patch.whatsappGroupUrl !== undefined) {
-        payload.whatsappGroupUrl = patch.whatsappGroupUrl.trim()
-          ? clampStr(patch.whatsappGroupUrl.trim(), 300)
-          : deleteField();
-      }
-      void updateDoc(doc(db, 'classes', id), payload).catch((err) =>
-        handleFirestoreError(err, OperationType.UPDATE, `classes/${id}`)
-      );
+    const payload: Record<string, unknown> = { updatedAt: serverTimestamp() };
+    if (patch.name !== undefined) payload.name = clampStr(patch.name.trim() || 'Kelas', 80);
+    if (patch.whatsappGroupUrl !== undefined) {
+      payload.whatsappGroupUrl = patch.whatsappGroupUrl.trim()
+        ? clampStr(patch.whatsappGroupUrl.trim(), 300)
+        : deleteField();
     }
+    void updateDoc(doc(db, 'classes', id), payload).catch((err) =>
+      handleFirestoreError(err, OperationType.UPDATE, `classes/${id}`)
+    );
   };
 
   const deleteClass = (id: string) => {
+    if (!isAuthorizedTeacher) return;
     const removedStudentIds = studentsRoster.filter((s) => s.classId === id).map((s) => s.id);
     const removedMaterialIds = materials.filter((m) => m.classId === id).map((m) => m.id);
     const removedTaskIds = tasks.filter((t) => t.classId === id).map((t) => t.id);
@@ -1546,28 +1585,27 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAttendance((prev) => prev.filter((a) => a.classId !== id));
     if (activeClassId === id) setActiveClassId('all');
 
-    if (firebaseUser && isCloudAdmin) {
-      const runDelete = async () => {
-        try {
-          const batch = writeBatch(db);
-          batch.delete(doc(db, 'classes', id));
-          removedStudentIds.forEach((sid) => {
-            batch.delete(doc(db, 'students', sid));
-            batch.delete(doc(db, 'students', sid, 'private', 'contact'));
-          });
-          removedMaterialIds.forEach((mid) => batch.delete(doc(db, 'materials', mid)));
-          removedTaskIds.forEach((tid) => batch.delete(doc(db, 'tasks', tid)));
-          removedAttIds.forEach((aid) => batch.delete(doc(db, 'attendance', aid)));
-          await batch.commit();
-        } catch (err) {
-          handleFirestoreError(err, OperationType.DELETE, `classes/${id}`);
-        }
-      };
-      void runDelete();
-    }
+    const runDelete = async () => {
+      try {
+        const batch = writeBatch(db);
+        batch.delete(doc(db, 'classes', id));
+        removedStudentIds.forEach((sid) => {
+          batch.delete(doc(db, 'students', sid));
+          batch.delete(doc(db, 'students', sid, 'private', 'contact'));
+        });
+        removedMaterialIds.forEach((mid) => batch.delete(doc(db, 'materials', mid)));
+        removedTaskIds.forEach((tid) => batch.delete(doc(db, 'tasks', tid)));
+        removedAttIds.forEach((aid) => batch.delete(doc(db, 'attendance', aid)));
+        await batch.commit();
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `classes/${id}`);
+      }
+    };
+    void runDelete();
   };
 
   const deleteAllClasses = () => {
+    if (!isAuthorizedTeacher) return;
     const allClassIds = classes.map((c) => c.id);
     const allStudentIds = studentsRoster.map((s) => s.id);
     const classMaterialIds = materials.filter((m) => m.classId !== 'all').map((m) => m.id);
@@ -1607,7 +1645,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addStudent = (name: string, classId: string, whatsapp?: string) => {
-    if (!name.trim()) return;
+    if (!isAuthorizedTeacher || !firebaseUser || !name.trim()) return;
     const cleanWa = whatsapp?.trim() || undefined;
     const newStudent: Student = {
       id: 's_' + Date.now(),
@@ -1620,97 +1658,99 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setStudentContacts((prev) => ({ ...prev, [newStudent.id]: cleanWa }));
     }
 
-    if (firebaseUser && isCloudAdmin) {
-      const writeStudent = async () => {
-        try {
-          const batch = writeBatch(db);
-          batch.set(doc(db, 'students', newStudent.id), {
-            name: newStudent.name,
-            classId: newStudent.classId,
-            visibility: 'classroom',
+    const writeStudent = async () => {
+      try {
+        const batch = writeBatch(db);
+        batch.set(doc(db, 'students', newStudent.id), {
+          name: newStudent.name,
+          classId: newStudent.classId,
+          visibility: 'classroom',
+          ownerUid: firebaseUser.uid,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        if (cleanWa) {
+          batch.set(doc(db, 'students', newStudent.id, 'private', 'contact'), {
+            whatsapp: clampStr(cleanWa, 30),
             ownerUid: firebaseUser.uid,
-            createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
-          if (cleanWa) {
-            batch.set(doc(db, 'students', newStudent.id, 'private', 'contact'), {
-              whatsapp: clampStr(cleanWa, 30),
-              ownerUid: firebaseUser.uid,
-              updatedAt: serverTimestamp(),
-            });
-          }
-          await batch.commit();
-        } catch (err) {
-          handleFirestoreError(err, OperationType.CREATE, `students/${newStudent.id}`);
         }
-      };
-      void writeStudent();
-    }
+        await batch.commit();
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, `students/${newStudent.id}`);
+      }
+    };
+    void writeStudent();
   };
 
   const updateStudent = (id: string, patch: Partial<Pick<Student, 'name' | 'classId' | 'whatsapp'>>) => {
-    setStudentsRoster((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, ...patch } : s))
-    );
-    if (patch.whatsapp !== undefined) {
-      const cleanWa = patch.whatsapp.trim();
-      setStudentContacts((prev) => ({ ...prev, [id]: cleanWa }));
-    }
+    if (!firebaseUser || !firebaseUser.emailVerified) return;
 
-    if (firebaseUser && firebaseUser.emailVerified) {
-      if (isCloudAdmin) {
-        if (patch.name !== undefined || patch.classId !== undefined) {
-          const stuPatch: Record<string, unknown> = { updatedAt: serverTimestamp() };
-          if (patch.name !== undefined) stuPatch.name = clampStr(patch.name.trim() || 'Siswa', 120);
-          if (patch.classId !== undefined) stuPatch.classId = patch.classId;
-          void updateDoc(doc(db, 'students', id), stuPatch).catch((err) =>
-            handleFirestoreError(err, OperationType.UPDATE, `students/${id}`)
-          );
-        }
-        if (patch.whatsapp !== undefined) {
-          const cleanWa = clampStr(patch.whatsapp.trim(), 30);
-          const ownerUid = studentOwnerMapRef.current[id] || firebaseUser.uid;
-          void setDoc(
-            doc(db, 'students', id, 'private', 'contact'),
-            {
-              whatsapp: cleanWa,
-              ownerUid,
-              updatedAt: serverTimestamp(),
-            },
-            { merge: true }
-          ).catch((err) =>
-            handleFirestoreError(err, OperationType.WRITE, `students/${id}/private/contact`)
-          );
-        }
-      } else if (patch.whatsapp !== undefined) {
-        // Student self-service WhatsApp update
-        void syncStudentClaimAndWa(id, patch.whatsapp.trim());
+    if (isAuthorizedTeacher) {
+      setStudentsRoster((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, ...patch } : s))
+      );
+      if (patch.whatsapp !== undefined) {
+        const cleanWa = patch.whatsapp.trim();
+        setStudentContacts((prev) => ({ ...prev, [id]: cleanWa }));
       }
+      if (patch.name !== undefined || patch.classId !== undefined) {
+        const stuPatch: Record<string, unknown> = { updatedAt: serverTimestamp() };
+        if (patch.name !== undefined) stuPatch.name = clampStr(patch.name.trim() || 'Siswa', 120);
+        if (patch.classId !== undefined) stuPatch.classId = patch.classId;
+        void updateDoc(doc(db, 'students', id), stuPatch).catch((err) =>
+          handleFirestoreError(err, OperationType.UPDATE, `students/${id}`)
+        );
+      }
+      if (patch.whatsapp !== undefined) {
+        const cleanWa = clampStr(patch.whatsapp.trim(), 30);
+        const ownerUid = studentOwnerMapRef.current[id] || firebaseUser.uid;
+        void setDoc(
+          doc(db, 'students', id, 'private', 'contact'),
+          {
+            whatsapp: cleanWa,
+            ownerUid,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        ).catch((err) =>
+          handleFirestoreError(err, OperationType.WRITE, `students/${id}/private/contact`)
+        );
+      }
+    } else if (authSession?.role === 'student' && id === currentStudentId && patch.whatsapp !== undefined) {
+      // Student self-service WhatsApp update for their own claimed student record only
+      const cleanWa = patch.whatsapp.trim();
+      setStudentsRoster((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, whatsapp: cleanWa } : s))
+      );
+      setStudentContacts((prev) => ({ ...prev, [id]: cleanWa }));
+      void syncStudentClaimAndWa(id, cleanWa);
     }
   };
 
   const deleteStudent = (id: string) => {
+    if (!isAuthorizedTeacher) return;
     const removedSubs = submissions.filter((sub) => sub.studentId === id).map((sub) => sub.id);
     setStudentsRoster((prev) => prev.filter((s) => s.id !== id));
     setSubmissions((prev) => prev.filter((sub) => sub.studentId !== id));
 
-    if (firebaseUser && isCloudAdmin) {
-      const runDel = async () => {
-        try {
-          const batch = writeBatch(db);
-          batch.delete(doc(db, 'students', id));
-          batch.delete(doc(db, 'students', id, 'private', 'contact'));
-          removedSubs.forEach((subId) => batch.delete(doc(db, 'submissions', subId)));
-          await batch.commit();
-        } catch (err) {
-          handleFirestoreError(err, OperationType.DELETE, `students/${id}`);
-        }
-      };
-      void runDel();
-    }
+    const runDel = async () => {
+      try {
+        const batch = writeBatch(db);
+        batch.delete(doc(db, 'students', id));
+        batch.delete(doc(db, 'students', id, 'private', 'contact'));
+        removedSubs.forEach((subId) => batch.delete(doc(db, 'submissions', subId)));
+        await batch.commit();
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `students/${id}`);
+      }
+    };
+    void runDel();
   };
 
   const addStudentsBatch = (newStudents: { name: string; classId: string; whatsapp?: string }[]) => {
+    if (!isAuthorizedTeacher || !firebaseUser) return;
     const validClassIds = new Set(classes.map((c) => c.id));
     const fallbackClassId = classes[0]?.id || 'c1';
 
@@ -1777,6 +1817,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const exportBackup = () => {
+    if (!isAuthorizedTeacher) return;
     const data = {
       teacher,
       classes,
@@ -1829,11 +1870,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const syncLocalDataToCloud = async (): Promise<{ ok: boolean; message: string }> => {
-    if (!firebaseUser || !firebaseUser.emailVerified || !isCloudAdmin) {
+    if (!firebaseUser || !firebaseUser.emailVerified || !isCloudAdmin || authSession?.role !== 'teacher') {
       return {
         ok: false,
         message:
-          'Masuk terlebih dahulu lewat tombol "Masuk Guru via Google (Database Cloud)" di halaman login agar data lokal dapat diunggah ke Firestore.',
+          'Akses ditolak: Hanya Guru & Admin terdaftar yang dapat mengunggah data ke Database Cloud.',
       };
     }
 
@@ -1909,6 +1950,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const importBackup = async (jsonContent: string): Promise<{ ok: boolean; message: string }> => {
+    if (!isAuthorizedTeacher) {
+      return {
+        ok: false,
+        message: 'Akses ditolak: Hanya Guru & Admin terdaftar yang dapat memulihkan data.',
+      };
+    }
     let data: {
       teacher?: TeacherProfile;
       classes?: ClassRoom[];
@@ -2024,6 +2071,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addMaterial = (item: Omit<Material, 'id' | 'date'>) => {
+    if (!isAuthorizedTeacher || !firebaseUser) return;
     const today = new Date().toISOString().split('T')[0];
     const newMaterial: Material = {
       ...item,
@@ -2035,47 +2083,45 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     setMaterials((prev) => [newMaterial, ...prev]);
 
-    if (firebaseUser && isCloudAdmin) {
-      const matData: Record<string, unknown> = {
-        title: clampStr(newMaterial.title || 'Materi', 200),
-        content: clampStr(newMaterial.content || '', 20000),
-        classId: newMaterial.classId || 'all',
-        date: clampStr(today, 30),
-        visibility: 'classroom',
-        ownerUid: firebaseUser.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
-      if (newMaterial.linkUrl) matData.linkUrl = clampStr(newMaterial.linkUrl, 500);
-      if (newMaterial.attachment) {
-        matData.attachmentName = clampStr(newMaterial.attachment.name, 200);
-        matData.attachmentSize = clampStr(newMaterial.attachment.size, 40);
-        matData.attachmentType = newMaterial.attachment.type;
-        if (
-          newMaterial.attachment.dataUrl &&
-          newMaterial.attachment.dataUrl.length <= MAX_FIRESTORE_ATTACHMENT_CHARS
-        ) {
-          matData.attachmentDataUrl = newMaterial.attachment.dataUrl;
-        }
+    const matData: Record<string, unknown> = {
+      title: clampStr(newMaterial.title || 'Materi', 200),
+      content: clampStr(newMaterial.content || '', 20000),
+      classId: newMaterial.classId || 'all',
+      date: clampStr(today, 30),
+      visibility: 'classroom',
+      ownerUid: firebaseUser.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+    if (newMaterial.linkUrl) matData.linkUrl = clampStr(newMaterial.linkUrl, 500);
+    if (newMaterial.attachment) {
+      matData.attachmentName = clampStr(newMaterial.attachment.name, 200);
+      matData.attachmentSize = clampStr(newMaterial.attachment.size, 40);
+      matData.attachmentType = newMaterial.attachment.type;
+      if (
+        newMaterial.attachment.dataUrl &&
+        newMaterial.attachment.dataUrl.length <= MAX_FIRESTORE_ATTACHMENT_CHARS
+      ) {
+        matData.attachmentDataUrl = newMaterial.attachment.dataUrl;
       }
-      void setDoc(doc(db, 'materials', newMaterial.id), matData).catch((err) =>
-        handleFirestoreError(err, OperationType.CREATE, `materials/${newMaterial.id}`)
-      );
     }
+    void setDoc(doc(db, 'materials', newMaterial.id), matData).catch((err) =>
+      handleFirestoreError(err, OperationType.CREATE, `materials/${newMaterial.id}`)
+    );
   };
 
   const deleteMaterial = (id: string) => {
+    if (!isAuthorizedTeacher) return;
     deleteFileAttachment(id);
     setMaterials((prev) => prev.filter((m) => m.id !== id));
 
-    if (firebaseUser && isCloudAdmin) {
-      void deleteDoc(doc(db, 'materials', id)).catch((err) =>
-        handleFirestoreError(err, OperationType.DELETE, `materials/${id}`)
-      );
-    }
+    void deleteDoc(doc(db, 'materials', id)).catch((err) =>
+      handleFirestoreError(err, OperationType.DELETE, `materials/${id}`)
+    );
   };
 
   const addTask = (item: Omit<Task, 'id' | 'createdAt'>) => {
+    if (!isAuthorizedTeacher || !firebaseUser) return;
     const today = new Date().toISOString().split('T')[0];
     const newTask: Task = {
       ...item,
@@ -2087,54 +2133,51 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     setTasks((prev) => [newTask, ...prev]);
 
-    if (firebaseUser && isCloudAdmin) {
-      const taskData: Record<string, unknown> = {
-        title: clampStr(newTask.title || 'Tugas', 200),
-        instructions: clampStr(newTask.instructions || '', 30000),
-        dueDate: clampStr(newTask.dueDate || today, 30),
-        classId: newTask.classId || 'all',
-        createdAtStr: clampStr(today, 30),
-        visibility: 'classroom',
-        ownerUid: firebaseUser.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
-      if (newTask.attachment) {
-        taskData.attachmentName = clampStr(newTask.attachment.name, 200);
-        taskData.attachmentSize = clampStr(newTask.attachment.size, 40);
-        taskData.attachmentType = newTask.attachment.type;
-        if (
-          newTask.attachment.dataUrl &&
-          newTask.attachment.dataUrl.length <= MAX_FIRESTORE_ATTACHMENT_CHARS
-        ) {
-          taskData.attachmentDataUrl = newTask.attachment.dataUrl;
-        }
+    const taskData: Record<string, unknown> = {
+      title: clampStr(newTask.title || 'Tugas', 200),
+      instructions: clampStr(newTask.instructions || '', 30000),
+      dueDate: clampStr(newTask.dueDate || today, 30),
+      classId: newTask.classId || 'all',
+      createdAtStr: clampStr(today, 30),
+      visibility: 'classroom',
+      ownerUid: firebaseUser.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+    if (newTask.attachment) {
+      taskData.attachmentName = clampStr(newTask.attachment.name, 200);
+      taskData.attachmentSize = clampStr(newTask.attachment.size, 40);
+      taskData.attachmentType = newTask.attachment.type;
+      if (
+        newTask.attachment.dataUrl &&
+        newTask.attachment.dataUrl.length <= MAX_FIRESTORE_ATTACHMENT_CHARS
+      ) {
+        taskData.attachmentDataUrl = newTask.attachment.dataUrl;
       }
-      void setDoc(doc(db, 'tasks', newTask.id), taskData).catch((err) =>
-        handleFirestoreError(err, OperationType.CREATE, `tasks/${newTask.id}`)
-      );
     }
+    void setDoc(doc(db, 'tasks', newTask.id), taskData).catch((err) =>
+      handleFirestoreError(err, OperationType.CREATE, `tasks/${newTask.id}`)
+    );
   };
 
   const deleteTask = (id: string) => {
+    if (!isAuthorizedTeacher) return;
     deleteFileAttachment(id);
     const removedSubs = submissions.filter((s) => s.taskId === id).map((s) => s.id);
     setTasks((prev) => prev.filter((t) => t.id !== id));
     setSubmissions((prev) => prev.filter((s) => s.taskId !== id));
 
-    if (firebaseUser && isCloudAdmin) {
-      const runDelTask = async () => {
-        try {
-          const batch = writeBatch(db);
-          batch.delete(doc(db, 'tasks', id));
-          removedSubs.forEach((sid) => batch.delete(doc(db, 'submissions', sid)));
-          await batch.commit();
-        } catch (err) {
-          handleFirestoreError(err, OperationType.DELETE, `tasks/${id}`);
-        }
-      };
-      void runDelTask();
-    }
+    const runDelTask = async () => {
+      try {
+        const batch = writeBatch(db);
+        batch.delete(doc(db, 'tasks', id));
+        removedSubs.forEach((sid) => batch.delete(doc(db, 'submissions', sid)));
+        await batch.commit();
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `tasks/${id}`);
+      }
+    };
+    void runDelTask();
   };
 
   const submitTask = (taskId: string, studentId: string, workText: string, linkAttachment?: string) => {
@@ -2210,6 +2253,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const gradeSubmission = (submissionId: string, score: number, note?: string) => {
+    if (!isAuthorizedTeacher) return;
     const cleanScore = Math.min(100, Math.max(0, score));
     setSubmissions((prev) =>
       prev.map((sub) =>
@@ -2219,18 +2263,16 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       )
     );
 
-    if (firebaseUser && isCloudAdmin) {
-      const payload: Record<string, unknown> = {
-        score: cleanScore,
-        updatedAt: serverTimestamp(),
-      };
-      if (note !== undefined) {
-        payload.note = clampStr(note, 1000);
-      }
-      void updateDoc(doc(db, 'submissions', submissionId), payload).catch((err) =>
-        handleFirestoreError(err, OperationType.UPDATE, `submissions/${submissionId}`)
-      );
+    const payload: Record<string, unknown> = {
+      score: cleanScore,
+      updatedAt: serverTimestamp(),
+    };
+    if (note !== undefined) {
+      payload.note = clampStr(note, 1000);
     }
+    void updateDoc(doc(db, 'submissions', submissionId), payload).catch((err) =>
+      handleFirestoreError(err, OperationType.UPDATE, `submissions/${submissionId}`)
+    );
   };
 
   const saveAttendance = (
@@ -2239,6 +2281,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     topic: string,
     records: Record<string, AttendanceStatus>
   ) => {
+    if (!isAuthorizedTeacher || !firebaseUser) return;
     const newRecord: AttendanceRecord = {
       id: 'att_' + Date.now(),
       date,
@@ -2248,80 +2291,75 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setAttendance((prev) => [newRecord, ...prev]);
 
-    if (firebaseUser && isCloudAdmin) {
-      void setDoc(doc(db, 'attendance', newRecord.id), {
-        date: clampStr(date, 30),
-        classId,
-        topic: clampStr(topic || 'Pertemuan', 200),
-        records,
-        visibility: 'classroom',
-        ownerUid: firebaseUser.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      }).catch((err) => handleFirestoreError(err, OperationType.CREATE, `attendance/${newRecord.id}`));
-    }
+    void setDoc(doc(db, 'attendance', newRecord.id), {
+      date: clampStr(date, 30),
+      classId,
+      topic: clampStr(topic || 'Pertemuan', 200),
+      records,
+      visibility: 'classroom',
+      ownerUid: firebaseUser.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }).catch((err) => handleFirestoreError(err, OperationType.CREATE, `attendance/${newRecord.id}`));
   };
 
   const deleteAttendance = (id: string) => {
+    if (!isAuthorizedTeacher) return;
     setAttendance((prev) => prev.filter((a) => a.id !== id));
 
-    if (firebaseUser && isCloudAdmin) {
-      void deleteDoc(doc(db, 'attendance', id)).catch((err) =>
-        handleFirestoreError(err, OperationType.DELETE, `attendance/${id}`)
-      );
-    }
+    void deleteDoc(doc(db, 'attendance', id)).catch((err) =>
+      handleFirestoreError(err, OperationType.DELETE, `attendance/${id}`)
+    );
   };
 
   // AI Question Sets Actions
   const addQuestionSet = (qset: GeneratedQuestionSet) => {
+    if (!isAuthorizedTeacher || !firebaseUser) return;
     setQuestionSets((prev) => [qset, ...prev.slice(0, 14)]);
 
-    if (firebaseUser && isCloudAdmin) {
-      void setDoc(doc(db, 'questionSets', qset.id), {
-        title: clampStr(qset.title || 'Paket Soal AI', 200),
-        subject: clampStr(qset.subject || teacher.subject || 'Umum', 120),
-        sourceMaterial: clampStr(qset.sourceMaterial || '', 35000),
-        createdAtStr: clampStr(qset.createdAt || new Date().toISOString().split('T')[0], 30),
-        pgCount: Math.min(50, Math.max(0, Math.trunc(qset.pgCount))),
-        essayCount: Math.min(5, Math.max(0, Math.trunc(qset.essayCount))),
-        multipleChoice: (qset.multipleChoice || []).slice(0, 50),
-        essay: (qset.essay || []).slice(0, 5),
-        ownerUid: firebaseUser.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      }).catch((err) => handleFirestoreError(err, OperationType.CREATE, `questionSets/${qset.id}`));
-    }
+    void setDoc(doc(db, 'questionSets', qset.id), {
+      title: clampStr(qset.title || 'Paket Soal AI', 200),
+      subject: clampStr(qset.subject || teacher.subject || 'Umum', 120),
+      sourceMaterial: clampStr(qset.sourceMaterial || '', 35000),
+      createdAtStr: clampStr(qset.createdAt || new Date().toISOString().split('T')[0], 30),
+      pgCount: Math.min(50, Math.max(0, Math.trunc(qset.pgCount))),
+      essayCount: Math.min(5, Math.max(0, Math.trunc(qset.essayCount))),
+      multipleChoice: (qset.multipleChoice || []).slice(0, 50),
+      essay: (qset.essay || []).slice(0, 5),
+      ownerUid: firebaseUser.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }).catch((err) => handleFirestoreError(err, OperationType.CREATE, `questionSets/${qset.id}`));
   };
 
   const updateQuestionSet = (id: string, updated: GeneratedQuestionSet) => {
+    if (!isAuthorizedTeacher) return;
     setQuestionSets((prev) => prev.map((s) => (s.id === id ? updated : s)));
 
-    if (firebaseUser && isCloudAdmin) {
-      void updateDoc(doc(db, 'questionSets', id), {
-        title: clampStr(updated.title || 'Paket Soal AI', 200),
-        subject: clampStr(updated.subject || teacher.subject || 'Umum', 120),
-        sourceMaterial: clampStr(updated.sourceMaterial || '', 35000),
-        createdAtStr: clampStr(updated.createdAt || '', 30),
-        pgCount: Math.min(50, Math.max(0, Math.trunc(updated.pgCount))),
-        essayCount: Math.min(5, Math.max(0, Math.trunc(updated.essayCount))),
-        multipleChoice: (updated.multipleChoice || []).slice(0, 50),
-        essay: (updated.essay || []).slice(0, 5),
-        updatedAt: serverTimestamp(),
-      }).catch((err) => handleFirestoreError(err, OperationType.UPDATE, `questionSets/${id}`));
-    }
+    void updateDoc(doc(db, 'questionSets', id), {
+      title: clampStr(updated.title || 'Paket Soal AI', 200),
+      subject: clampStr(updated.subject || teacher.subject || 'Umum', 120),
+      sourceMaterial: clampStr(updated.sourceMaterial || '', 35000),
+      createdAtStr: clampStr(updated.createdAt || '', 30),
+      pgCount: Math.min(50, Math.max(0, Math.trunc(updated.pgCount))),
+      essayCount: Math.min(5, Math.max(0, Math.trunc(updated.essayCount))),
+      multipleChoice: (updated.multipleChoice || []).slice(0, 50),
+      essay: (updated.essay || []).slice(0, 5),
+      updatedAt: serverTimestamp(),
+    }).catch((err) => handleFirestoreError(err, OperationType.UPDATE, `questionSets/${id}`));
   };
 
   const deleteQuestionSet = (id: string) => {
+    if (!isAuthorizedTeacher) return;
     setQuestionSets((prev) => prev.filter((s) => s.id !== id));
 
-    if (firebaseUser && isCloudAdmin) {
-      void deleteDoc(doc(db, 'questionSets', id)).catch((err) =>
-        handleFirestoreError(err, OperationType.DELETE, `questionSets/${id}`)
-      );
-    }
+    void deleteDoc(doc(db, 'questionSets', id)).catch((err) =>
+      handleFirestoreError(err, OperationType.DELETE, `questionSets/${id}`)
+    );
   };
 
   const resetData = () => {
+    if (!isAuthorizedTeacher) return;
     setTeacher(initialTeacher);
     setClasses(initialClasses);
     setStudentsRoster(initialStudents);

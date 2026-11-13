@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLMS } from '../context/LMSContext';
-import { GraduationCap, UserCheck, BookOpen, LogOut, RotateCcw, Cloud, ShieldCheck, Sparkles, MessageCircle } from 'lucide-react';
+import { GraduationCap, UserCheck, LogOut, Cloud, ShieldCheck, Sparkles, MessageCircle } from 'lucide-react';
 
 interface HeaderProps {
   activeTab: 'materi' | 'tugas' | 'soal-ai' | 'whatsapp' | 'siswa' | 'rekap';
@@ -10,9 +10,21 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenProfile, onOpenDeployGuide }) => {
-  const { viewMode, setViewMode, teacher, resetData, authSession, logout, students, currentStudentId } = useLMS();
+  const {
+    viewMode,
+    setViewMode,
+    teacher,
+    authSession,
+    isCloudAdmin,
+    isCloudConnected,
+    logout,
+    students,
+    currentStudentId,
+  } = useLMS();
 
   const currentStudent = students.find((s) => s.id === currentStudentId);
+  const canAccessTeacherView = authSession?.role === 'teacher' && isCloudAdmin && isCloudConnected;
+  const isTeacherView = viewMode === 'teacher' && canAccessTeacherView;
 
   const navItems: Array<{
     id: 'materi' | 'tugas' | 'soal-ai' | 'whatsapp' | 'siswa' | 'rekap';
@@ -80,7 +92,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
         </div>
 
         {/* Zone 2: Desktop Navigation Links (Teacher Mode only) */}
-        {viewMode === 'teacher' ? (
+        {isTeacherView ? (
           <nav className="hidden md:flex items-center gap-1 lg:gap-2 overflow-x-auto no-scrollbar">
             {navItems.map((item) => {
               const isActive = activeTab === item.id;
@@ -112,7 +124,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
 
         {/* Zone 3: Actions & Logout */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          {viewMode === 'teacher' ? (
+          {isTeacherView ? (
             <>
               <button
                 onClick={onOpenProfile}
@@ -146,7 +158,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
               </button>
             </>
           ) : (
-            authSession?.role === 'teacher' && (
+            canAccessTeacherView && (
               <button
                 onClick={() => setViewMode('teacher')}
                 className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg shadow-xs transition-colors whitespace-nowrap"
@@ -168,23 +180,11 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
             <LogOut className="w-4 h-4" />
             <span className="hidden md:inline font-medium">Keluar</span>
           </button>
-
-          <button
-            onClick={() => {
-              if (confirm('Muat ulang data contoh awal? Perubahan lokal akan dikembalikan ke data bawaan.')) {
-                resetData();
-              }
-            }}
-            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-md hover:bg-slate-100"
-            title="Reset ke data contoh"
-          >
-            <RotateCcw className="w-4 h-4" />
-          </button>
         </div>
       </div>
 
       {/* Dedicated Mobile Navigation Strip (Teacher Mode) */}
-      {viewMode === 'teacher' && (
+      {isTeacherView && (
         <nav className="md:hidden border-t border-slate-100 bg-slate-50/80 px-3 py-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
           {navItems.map((item) => {
             const isActive = activeTab === item.id;

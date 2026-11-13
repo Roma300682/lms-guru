@@ -1,23 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLMS } from '../context/LMSContext';
-import { GraduationCap, User, Lock, ArrowRight, Check, AlertCircle, Cloud, MessageCircle, Loader2, LogIn, ExternalLink, Copy } from 'lucide-react';
+import { GraduationCap, User, Check, AlertCircle, Cloud, MessageCircle, Loader2, LogIn, ExternalLink, Copy } from 'lucide-react';
 import { DeployGuideModal } from './modals/DeployGuideModal';
-import { ForgotPasswordModal } from './modals/ForgotPasswordModal';
 import { normalizeWhatsAppNumber } from '../utils/whatsapp';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 export const LoginPage: React.FC = () => {
   const {
-    teacher,
     classes,
     students,
-    loginAsTeacher,
     loginWithGoogleAsTeacher,
     connectGoogleForStudent,
     loginWithGoogleRedirect,
     loginAsStudent,
     firebaseUser,
     isCloudConnected,
+    isCloudAdmin,
     isInIframe,
     cloudAuthError,
     cloudAuthErrorCode,
@@ -44,9 +42,7 @@ export const LoginPage: React.FC = () => {
       return 'teacher';
     }
   });
-  const [allowOfflineStudentDemo, setAllowOfflineStudentDemo] = useState(false);
   const [isDeployGuideOpen, setIsDeployGuideOpen] = useState(false);
-  const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
   const switchRoleTab = (nextRole: 'teacher' | 'student') => {
@@ -58,9 +54,24 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  // Teacher login state
-  const [pin, setPin] = useState('');
-  const [teacherError, setTeacherError] = useState('');
+  // Auto-switch to Student tab once when a non-admin student Google account is detected
+  const hasAutoSwitchedStudentRef = useRef(false);
+  useEffect(() => {
+    if (isCloudConnected && !isCloudAdmin && !hasAutoSwitchedStudentRef.current) {
+      hasAutoSwitchedStudentRef.current = true;
+      if (role === 'teacher' && !cloudAuthError) {
+        setRole('student');
+        try {
+          sessionStorage.setItem('gm_login_role_tab', 'student');
+        } catch {
+          // ignore
+        }
+      }
+    }
+    if (!isCloudConnected) {
+      hasAutoSwitchedStudentRef.current = false;
+    }
+  }, [isCloudConnected, isCloudAdmin, role, cloudAuthError]);
 
   // Student login state
   const [selectedClassId, setSelectedClassId] = useState<string>(classes[0]?.id || '');
@@ -93,7 +104,6 @@ export const LoginPage: React.FC = () => {
   };
 
   const handleTeacherGoogleLogin = async () => {
-    setTeacherError('');
     clearCloudAuthError();
     setIsGoogleLoading(true);
     try {
@@ -110,16 +120,6 @@ export const LoginPage: React.FC = () => {
       await connectGoogleForStudent();
     } finally {
       setIsGoogleLoading(false);
-    }
-  };
-
-  const handleTeacherSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setTeacherError('');
-    clearCloudAuthError();
-    const success = loginAsTeacher(pin);
-    if (!success) {
-      setTeacherError('PIN salah. Silakan periksa kembali PIN Anda.');
     }
   };
 
@@ -149,7 +149,7 @@ export const LoginPage: React.FC = () => {
           GuruMapel LMS
         </h1>
         <p className="text-xs text-slate-500 mt-1">
-          LMS Mandiri &amp; Panel Admin Mata Pelajaran {teacher.subject}
+          Platform Pembelajaran &amp; Database Cloud Guru Mata Pelajaran
         </p>
       </div>
 
@@ -161,7 +161,6 @@ export const LoginPage: React.FC = () => {
             type="button"
             onClick={() => {
               switchRoleTab('teacher');
-              setTeacherError('');
               clearCloudAuthError();
             }}
             className={`flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold rounded-xl transition-all ${
@@ -202,30 +201,80 @@ export const LoginPage: React.FC = () => {
         <div className="p-6">
           {role === 'teacher' ? (
             <div className="space-y-4">
-              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 text-xs">
-                <span className="text-slate-500 block">Guru &amp; Administrator Mapel:</span>
-                <span className="font-semibold text-slate-900 text-sm">{teacher.name}</span>
-                <span className="text-indigo-600 block text-xs mt-0.5">Mata Pelajaran: {teacher.subject}</span>
+              <div className="bg-indigo-50/70 rounded-xl p-4 border border-indigo-100 text-xs space-y-1">
+                <span className="font-bold text-indigo-950 block">
+                  Masuk Ruang Guru &amp; Administrator
+                </span>
+                <p className="text-[11px] text-indigo-900/80 leading-relaxed">
+                  Gunakan akun Google Guru terdaftar agar semua data kelas, materi, tugas, soal AI, WhatsApp, dan nilai tersinkron otomatis di Laptop &amp; HP.
+                </p>
               </div>
 
-              <button
-                type="button"
-                disabled={isGoogleLoading}
-                onClick={handleTeacherGoogleLogin}
-                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 rounded-xl transition-colors shadow-xs"
-              >
-                {isGoogleLoading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Menghubungkan Akun Google...</span>
-                  </>
-                ) : (
-                  <>
-                    <LogIn className="w-4 h-4" />
-                    <span>Masuk Guru via Google (Database Cloud)</span>
-                  </>
-                )}
-              </button>
+              {isCloudConnected && !isCloudAdmin ? (
+                <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 space-y-3 text-xs text-rose-900">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <span className="font-bold block">Akses Ruang Guru &amp; Admin Ditolak</span>
+                      <p className="text-[11px] leading-relaxed">
+                        Akun Google yang terhubung (<strong>{firebaseUser?.email}</strong>) adalah akun <strong>Siswa</strong> dan tidak diperbolehkan masuk ke Ruang Guru maupun Admin.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearCloudAuthError();
+                        switchRoleTab('student');
+                      }}
+                      className="flex-1 py-2 px-3 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg transition-colors"
+                    >
+                      Lanjut ke Masuk Siswa
+                    </button>
+                    <button
+                      type="button"
+                      onClick={logout}
+                      className="py-2 px-3 text-xs font-medium text-rose-800 bg-white hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors"
+                    >
+                      Ganti Akun Google
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    disabled={isGoogleLoading}
+                    onClick={handleTeacherGoogleLogin}
+                    className="w-full flex items-center justify-center gap-2 py-3 px-4 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 rounded-xl transition-colors shadow-xs"
+                  >
+                    {isGoogleLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Menghubungkan Akun Google...</span>
+                      </>
+                    ) : (
+                      <>
+                        <LogIn className="w-4 h-4" />
+                        <span>Masuk Guru via Google</span>
+                      </>
+                    )}
+                  </button>
+
+                  {!isInIframe && (
+                    <button
+                      type="button"
+                      disabled={isGoogleLoading}
+                      onClick={() => void loginWithGoogleRedirect('teacher')}
+                      className="w-full flex items-center justify-center gap-1.5 py-2 px-3 text-[11px] font-semibold text-indigo-900 bg-white hover:bg-indigo-50 border border-indigo-200 rounded-xl transition-colors"
+                    >
+                      <LogIn className="w-3.5 h-3.5" />
+                      <span>Login Google Alternatif (Jika Pop-up Diblokir)</span>
+                    </button>
+                  )}
+                </div>
+              )}
 
               {cloudAuthError && (
                 <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-3 space-y-2">
@@ -277,58 +326,6 @@ export const LoginPage: React.FC = () => {
                   </div>
                 </div>
               )}
-
-              <div className="relative flex items-center py-1">
-                <div className="flex-grow border-t border-slate-200" />
-                <span className="shrink mx-3 text-[11px] text-slate-400">atau masuk cepat dengan PIN</span>
-                <div className="flex-grow border-t border-slate-200" />
-              </div>
-
-              <form onSubmit={handleTeacherSubmit} className="space-y-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">
-                    Masukkan PIN Guru / Admin
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="password"
-                      maxLength={20}
-                      value={pin}
-                      onChange={(e) => {
-                        setPin(e.target.value);
-                        setTeacherError('');
-                      }}
-                      placeholder="Masukkan PIN keamanan"
-                      className="w-full text-sm px-3.5 py-2.5 pl-9 border border-slate-300 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500 font-mono"
-                    />
-                    <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                  </div>
-                  {teacherError && (
-                    <p className="text-xs text-rose-600 mt-1.5 flex items-center gap-1">
-                      <AlertCircle className="w-3.5 h-3.5" />
-                      <span>{teacherError}</span>
-                    </p>
-                  )}
-
-                  <div className="flex justify-end mt-2">
-                    <button
-                      type="button"
-                      onClick={() => setIsForgotPasswordOpen(true)}
-                      className="text-[11px] text-indigo-600 hover:text-indigo-800 hover:underline font-medium transition-colors"
-                    >
-                      Lupa PIN Guru / Admin?
-                    </button>
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors shadow-xs"
-                >
-                  <span>Masuk ke Ruang Guru &amp; Admin</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </form>
             </div>
           ) : (
             <div className="space-y-4">
@@ -446,30 +443,16 @@ export const LoginPage: React.FC = () => {
                 </div>
               )}
 
-              {!isCloudConnected && !allowOfflineStudentDemo ? (
-                <div className="text-center pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setAllowOfflineStudentDemo(true)}
-                    className="text-[11px] text-slate-400 hover:text-slate-600 underline"
-                  >
-                    Atau masuk mode demo lokal (tanpa sinkronisasi Cloud)
-                  </button>
-                </div>
-              ) : classes.length === 0 ? (
-                <div className="space-y-3 py-1">
-                  <div className="bg-amber-50 border border-amber-200 text-amber-800 p-3.5 rounded-xl text-xs">
-                    <span className="font-semibold block mb-1">Belum Ada Kelas Terdaftar</span>
-                    Guru belum menambahkan rombel kelas atau mengunggah data siswa ke Database Cloud. Minta guru untuk masuk lewat tab <strong>Guru &amp; Admin</strong> dan menekan <strong>Upload Data Browser Lokal ke Cloud</strong>.
-                  </div>
-                </div>
-              ) : (
-                <form onSubmit={handleStudentSubmit} className="space-y-4">
-                  {!isCloudConnected && (
-                    <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800">
-                      <strong>Mode Demo Lokal:</strong> Data di bawah hanya contoh perangkat ini (belum tersinkron ke Guru).
+              {isCloudConnected && (
+                classes.length === 0 ? (
+                  <div className="space-y-3 py-1">
+                    <div className="bg-amber-50 border border-amber-200 text-amber-800 p-3.5 rounded-xl text-xs">
+                      <span className="font-semibold block mb-1">Belum Ada Kelas Terdaftar</span>
+                      Guru belum menambahkan rombel kelas atau mengunggah data siswa ke Database Cloud. Minta guru untuk masuk lewat tab <strong>Guru &amp; Admin</strong> terlebih dahulu.
                     </div>
-                  )}
+                  </div>
+                ) : (
+                  <form onSubmit={handleStudentSubmit} className="space-y-4">
                   <div className="text-xs text-slate-600">
                     Pilih rombel kelas dan nama Anda untuk langsung masuk ke materi dan tugas:
                   </div>
@@ -565,6 +548,7 @@ export const LoginPage: React.FC = () => {
                     Pilih kelas dan nama Anda serta isi nomor WhatsApp aktif untuk mulai belajar.
                   </p>
                 </form>
+                )
               )}
             </div>
           )}
@@ -587,11 +571,6 @@ export const LoginPage: React.FC = () => {
       <DeployGuideModal
         isOpen={isDeployGuideOpen}
         onClose={() => setIsDeployGuideOpen(false)}
-      />
-
-      <ForgotPasswordModal
-        isOpen={isForgotPasswordOpen}
-        onClose={() => setIsForgotPasswordOpen(false)}
       />
     </div>
   );

@@ -13,7 +13,7 @@ import { DeployGuideModal } from './components/modals/DeployGuideModal';
 import { LoginPage } from './components/LoginPage';
 
 const MainContent: React.FC = () => {
-  const { viewMode, authSession, authLoading } = useLMS();
+  const { viewMode, authSession, authLoading, isCloudAdmin, isCloudConnected } = useLMS();
   const [activeTab, setActiveTab] = useState<'materi' | 'tugas' | 'soal-ai' | 'whatsapp' | 'siswa' | 'rekap'>('materi');
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isDeployModalOpen, setIsDeployModalOpen] = useState(false);
@@ -32,20 +32,32 @@ const MainContent: React.FC = () => {
     return <LoginPage />;
   }
 
+  const canAccessTeacherAdmin = authSession.role === 'teacher' && isCloudAdmin && isCloudConnected;
+  const handleOpenProfile = () => {
+    if (canAccessTeacherAdmin) {
+      setIsProfileModalOpen(true);
+    }
+  };
+  const handleOpenDeployGuide = () => {
+    if (canAccessTeacherAdmin) {
+      setIsDeployModalOpen(true);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
       <Header
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        onOpenProfile={() => setIsProfileModalOpen(true)}
-        onOpenDeployGuide={() => setIsDeployModalOpen(true)}
+        onOpenProfile={handleOpenProfile}
+        onOpenDeployGuide={handleOpenDeployGuide}
       />
 
       <div className="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6">
-        {viewMode === 'teacher' && authSession.role === 'teacher' ? (
+        {viewMode === 'teacher' && canAccessTeacherAdmin ? (
           <TeacherDashboard
             activeTab={activeTab}
-            onOpenProfile={() => setIsProfileModalOpen(true)}
+            onOpenProfile={handleOpenProfile}
             onNavigateTab={setActiveTab}
           />
         ) : (
@@ -59,15 +71,19 @@ const MainContent: React.FC = () => {
         </p>
       </footer>
 
-      <TeacherProfileModal
-        isOpen={isProfileModalOpen}
-        onClose={() => setIsProfileModalOpen(false)}
-      />
+      {canAccessTeacherAdmin && (
+        <>
+          <TeacherProfileModal
+            isOpen={isProfileModalOpen}
+            onClose={() => setIsProfileModalOpen(false)}
+          />
 
-      <DeployGuideModal
-        isOpen={isDeployModalOpen}
-        onClose={() => setIsDeployModalOpen(false)}
-      />
+          <DeployGuideModal
+            isOpen={isDeployModalOpen}
+            onClose={() => setIsDeployModalOpen(false)}
+          />
+        </>
+      )}
     </div>
   );
 };
