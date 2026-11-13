@@ -134,6 +134,15 @@ async function startServer() {
 
   app.use(express.json({ limit: '1mb' }));
 
+  app.use('/api', (req: Request, res: Response, next) => {
+    if (req.method === 'OPTIONS') {
+      res.setHeader('Allow', 'GET, POST, OPTIONS');
+      res.status(204).end();
+      return;
+    }
+    next();
+  });
+
   app.get('/api/health', (_req: Request, res: Response) => {
     res.json({ ok: true });
   });
@@ -216,7 +225,6 @@ ${uraianMateri.slice(0, 30000)}`;
               systemInstruction,
               responseMimeType: 'application/json',
               responseSchema: QUESTION_RESPONSE_SCHEMA,
-              maxOutputTokens: 8192,
               thinkingConfig: {
                 thinkingLevel: ThinkingLevel.LOW,
               },
@@ -226,8 +234,8 @@ ${uraianMateri.slice(0, 30000)}`;
         });
       };
 
-      // Split PG > 15 into parallel chunks so output JSON never truncates or times out
-      const MAX_PG_PER_CHUNK = 15;
+      // Split PG > 10 into parallel chunks so output JSON never truncates or times out
+      const MAX_PG_PER_CHUNK = 10;
       const chunks: Array<{ pg: number; essay: number; hint: string }> = [];
 
       if (rawPg === 0) {
@@ -491,6 +499,18 @@ ${uraianMateri.slice(0, 30000)}`;
       failedCount: results.length - sentCount,
       results,
     });
+  });
+
+  app.all('/api/generate-questions', (_req: Request, res: Response) => {
+    res.status(405).json({ error: 'Metode tidak diizinkan. Gunakan metode POST ke /api/generate-questions.' });
+  });
+
+  app.all('/api/whatsapp/broadcast', (_req: Request, res: Response) => {
+    res.status(405).json({ error: 'Metode tidak diizinkan. Gunakan metode POST ke /api/whatsapp/broadcast.' });
+  });
+
+  app.use('/api', (_req: Request, res: Response) => {
+    res.status(404).json({ error: 'Endpoint API tidak ditemukan.' });
   });
 
   if (process.env.NODE_ENV !== 'production') {

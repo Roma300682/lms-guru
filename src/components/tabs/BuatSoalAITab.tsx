@@ -244,6 +244,11 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({
   const safeReadJson = async (response: Response) => {
     const rawText = await response.text();
     if (!rawText.trim()) {
+      if (response.status === 405) {
+        throw new Error(
+          'Endpoint /api/generate-questions belum ditangani backend (HTTP 405). Pastikan backend Node.js (server.ts) atau fungsi serverless /api di Vercel aktif.'
+        );
+      }
       throw new Error(
         `Server tidak mengembalikan data (HTTP ${response.status}). Pastikan server backend aktif atau kurangi jumlah soal per proses.`
       );
@@ -276,8 +281,8 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({
 
     setIsGenerating(true);
     try {
-      // Split large requests (> 20 PG) into clean sequential batches to prevent gateway timeouts
-      const MAX_BATCH_PG = 20;
+      // Split large requests (> 10 PG) into clean sequential batches to prevent gateway timeouts
+      const MAX_BATCH_PG = 10;
       const batches: Array<{ pg: number; essay: number }> = [];
       if (pgCount === 0) {
         batches.push({ pg: 0, essay: essayCount });
