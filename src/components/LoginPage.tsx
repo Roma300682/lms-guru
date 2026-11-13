@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useLMS } from '../context/LMSContext';
-import { GraduationCap, User, Lock, ArrowRight, Check, AlertCircle, Cloud, MessageCircle, Loader2, LogIn } from 'lucide-react';
+import { GraduationCap, User, Lock, ArrowRight, Check, AlertCircle, Cloud, MessageCircle, Loader2, LogIn, ExternalLink } from 'lucide-react';
 import { DeployGuideModal } from './modals/DeployGuideModal';
 import { ForgotPasswordModal } from './modals/ForgotPasswordModal';
 import { normalizeWhatsAppNumber } from '../utils/whatsapp';
@@ -13,9 +13,11 @@ export const LoginPage: React.FC = () => {
     loginAsTeacher,
     loginWithGoogleAsTeacher,
     connectGoogleForStudent,
+    loginWithGoogleRedirect,
     loginAsStudent,
     firebaseUser,
     isCloudConnected,
+    isInIframe,
     cloudAuthError,
     clearCloudAuthError,
   } = useLMS();
@@ -195,10 +197,34 @@ export const LoginPage: React.FC = () => {
               </button>
 
               {cloudAuthError && (
-                <p className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg p-2.5 flex items-start gap-1.5">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                  <span>{cloudAuthError}</span>
-                </p>
+                <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-3 space-y-2">
+                  <div className="flex items-start gap-1.5">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
+                    <span>{cloudAuthError}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 pt-0.5">
+                    {isInIframe ? (
+                      <a
+                        href={typeof window !== 'undefined' ? window.location.href : '#'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Buka di Tab Browser Baru</span>
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void loginWithGoogleRedirect('teacher')}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors"
+                      >
+                        <LogIn className="w-3.5 h-3.5" />
+                        <span>Login Google Tanpa Pop-up (Redirect)</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
               )}
 
               <div className="relative flex items-center py-1">
@@ -291,10 +317,34 @@ export const LoginPage: React.FC = () => {
               )}
 
               {cloudAuthError && (
-                <p className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg p-2.5 flex items-start gap-1.5">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                  <span>{cloudAuthError}</span>
-                </p>
+                <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-3 space-y-2">
+                  <div className="flex items-start gap-1.5">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
+                    <span>{cloudAuthError}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 pt-0.5">
+                    {isInIframe ? (
+                      <a
+                        href={typeof window !== 'undefined' ? window.location.href : '#'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg transition-colors"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Buka di Tab Browser Baru</span>
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void loginWithGoogleRedirect('student')}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg transition-colors"
+                      >
+                        <LogIn className="w-3.5 h-3.5" />
+                        <span>Hubungkan Google Tanpa Pop-up (Redirect)</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
               )}
 
               {classes.length === 0 ? (

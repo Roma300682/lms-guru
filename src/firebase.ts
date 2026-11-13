@@ -3,6 +3,8 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signOut,
   User,
 } from 'firebase/auth';
@@ -90,9 +92,26 @@ async function testConnection() {
 
 void testConnection();
 
+export function isEmbeddedInIframe(): boolean {
+  try {
+    return typeof window !== 'undefined' && window.self !== window.top;
+  } catch {
+    return true;
+  }
+}
+
 export async function signInWithGooglePopup(): Promise<User> {
   const result = await signInWithPopup(auth, googleProvider);
   return result.user;
+}
+
+export async function signInWithGoogleRedirect(): Promise<void> {
+  await signInWithRedirect(auth, googleProvider);
+}
+
+export async function resolveGoogleRedirectResult(): Promise<User | null> {
+  const result = await getRedirectResult(auth);
+  return result?.user || null;
 }
 
 export async function signOutFirebase(): Promise<void> {

@@ -21,6 +21,9 @@ import {
   OperationType,
   handleFirestoreError,
   signInWithGooglePopup,
+  signInWithGoogleRedirect,
+  resolveGoogleRedirectResult,
+  isEmbeddedInIframe,
   signOutFirebase,
 } from '../firebase';
 import {
@@ -69,6 +72,7 @@ interface LMSContextType {
   authLoading: boolean;
   isCloudAdmin: boolean;
   isCloudConnected: boolean;
+  isInIframe: boolean;
   cloudAuthError: string | null;
   clearCloudAuthError: () => void;
 
@@ -76,6 +80,7 @@ interface LMSContextType {
   loginAsTeacher: (pin: string) => boolean;
   loginWithGoogleAsTeacher: () => Promise<boolean>;
   connectGoogleForStudent: () => Promise<boolean>;
+  loginWithGoogleRedirect: (intendedRole: 'teacher' | 'student') => Promise<void>;
   loginAsStudent: (studentId: string, whatsapp?: string) => void;
   logout: () => void;
   resetTeacherPin: (newPin: string) => void;
@@ -237,10 +242,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const clearCloudAuthError = useCallback(() => setCloudAuthError(null), []);
 
+  const isInIframe = isEmbeddedInIframe();
+
   // Resolve whether authenticated Firebase user is an Admin
   const checkUserAdminStatus = useCallback(async (user: User): Promise<boolean> => {
     if (!user.emailVerified) return false;
-    if (user.email === BOOTSTRAP_ADMIN_EMAIL) return true;
+    if (user.email?.toLowerCase() === BOOTSTRAP_ADMIN_EMAIL.toLowerCase()) return true;
     try {
       const adminSnap = await getDoc(doc(db, 'admins', user.uid));
       return adminSnap.exists();
@@ -249,20 +256,52 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
-  // Listen to Firebase Auth state
+  // Listen to Firebase Auth state and process any pending Google Redirect result
   useEffect(() => {
+    let active = true;
+
+    void resolveGoogleRedirectResult()
+      .then(async (redirectUser) => {
+        if (!active || !redirectUser) return;
+        const intendedRole = sessionStorage.getItem('gm_google_redirect_role');
+        sessionStorage.removeItem('gm_google_redirect_role');
+        if (intendedRole === 'teacher') {
+          if (!redirectUser.emailVerified) {
+            setCloudAuthError('Email Google Anda belum terverifikasi.');
+            return;
+          }
+          const adminOk = await checkUserAdminStatus(redirectUser);
+          if (!adminOk) {
+            setCloudAuthError(
+              `Akun (${redirectUser.email || 'ini'}) bukan Guru/Admin terdaftar. Masuk melalui tab "Masuk Siswa" atau gunakan PIN Guru.`
+            );
+            await signOutFirebase();
+          }
+        }
+      })
+      .catch((err) => {
+        if (!active) return;
+        const code = (err as { code?: string })?.code || '';
+        const msg = err instanceof Error ? err.message : String(err);
+        if (code && code !== 'auth/popup-closed-by-user') {
+          setCloudAuthError(`Gagal menyelesaikan login Google (${code}: ${msg}).`);
+        }
+      });
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!active) return;
       setFirebaseUser(user);
       if (user && user.emailVerified) {
         try {
           const adminFlag = await checkUserAdminStatus(user);
+          if (!active) return;
           setIsCloudAdmin(adminFlag);
           if (adminFlag && !authSession) {
             setAuthSession({ role: 'teacher' });
             setViewMode('teacher');
           }
         } catch {
-          setIsCloudAdmin(false);
+          if (active) setIsCloudAdmin(false);
         }
       } else {
         setIsCloudAdmin(false);
@@ -270,7 +309,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       setAuthLoading(false);
     });
-    return () => unsubscribe();
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, [checkUserAdminStatus]);
 
   // Seed existing local LMS data into an empty Cloud Firestore on first Admin connection
@@ -787,6 +830,78 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [firebaseUser, isCloudAdmin, studentsRoster, authSession?.role, currentStudentId]);
 
+  const handleGoogleAuthFailure = async (
+    err: unknown,
+    intendedRole: 'teacher' | 'student'
+  ): Promise<void> => {
+    const code = (err as { code?: string })?.code || '';
+    const rawMsg = err instanceof Error ? err.message : String(err);
+    console.error('Google Auth failure:', code, err);
+
+    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+      return;
+    }
+
+    if (code === 'auth/popup-blocked') {
+      if (!isInIframe) {
+        try {
+          sessionStorage.setItem('gm_google_redirect_role', intendedRole);
+          await signInWithGoogleRedirect();
+          return;
+        } catch (redirectErr) {
+          console.error('Google redirect fallback failed:', redirectErr);
+        }
+      }
+      setCloudAuthError(
+        'Pop-up login Google diblokir oleh browser atau mode pratinjau. Izinkan pop-up pada browser Anda atau buka aplikasi di tab baru.'
+      );
+      return;
+    }
+
+    if (code === 'auth/unauthorized-domain') {
+      const host = typeof window !== 'undefined' ? window.location.hostname : '';
+      setCloudAuthError(
+        `Domain (${host}) belum terdaftar di Authorized Domains Firebase Auth (${code}). Tambahkan domain ini di Firebase Console → Authentication → Settings → Authorized domains.`
+      );
+      return;
+    }
+
+    if (code === 'auth/operation-not-allowed') {
+      setCloudAuthError(
+        `Provider Login Google belum aktif di Firebase Console (${code}).`
+      );
+      return;
+    }
+
+    if (code === 'auth/web-storage-unsupported' || rawMsg.toLowerCase().includes('storage')) {
+      setCloudAuthError(
+        `Browser memblokir cookie/penyimpanan untuk login Google (${code || 'storage-blocked'}). Buka di tab baru atau nonaktifkan pemblokiran cookie pihak ketiga.`
+      );
+      return;
+    }
+
+    if (code === 'auth/network-request-failed') {
+      setCloudAuthError(
+        'Gagal terhubung ke server Google. Periksa koneksi internet Anda lalu coba lagi.'
+      );
+      return;
+    }
+
+    setCloudAuthError(
+      `Gagal masuk dengan Google (${code || rawMsg}). Izinkan pop-up browser atau buka aplikasi di tab baru.`
+    );
+  };
+
+  const loginWithGoogleRedirect = async (intendedRole: 'teacher' | 'student'): Promise<void> => {
+    setCloudAuthError(null);
+    try {
+      sessionStorage.setItem('gm_google_redirect_role', intendedRole);
+      await signInWithGoogleRedirect();
+    } catch (err) {
+      await handleGoogleAuthFailure(err, intendedRole);
+    }
+  };
+
   // Authentication Handlers
   const loginWithGoogleAsTeacher = async (): Promise<boolean> => {
     setCloudAuthError(null);
@@ -809,10 +924,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setViewMode('teacher');
       return true;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes('popup-closed-by-user') && !msg.includes('cancelled-popup-request')) {
-        setCloudAuthError('Gagal masuk dengan Google. Pastikan pop-up diizinkan browser.');
-      }
+      await handleGoogleAuthFailure(err, 'teacher');
       return false;
     }
   };
@@ -827,10 +939,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return true;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes('popup-closed-by-user') && !msg.includes('cancelled-popup-request')) {
-        setCloudAuthError('Gagal menghubungkan akun Google. Pastikan pop-up diizinkan browser.');
-      }
+      await handleGoogleAuthFailure(err, 'student');
       return false;
     }
   };
@@ -1739,12 +1848,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         authLoading,
         isCloudAdmin,
         isCloudConnected,
+        isInIframe,
         cloudAuthError,
         clearCloudAuthError,
         authSession,
         loginAsTeacher,
         loginWithGoogleAsTeacher,
         connectGoogleForStudent,
+        loginWithGoogleRedirect,
         loginAsStudent,
         logout,
         resetTeacherPin,
