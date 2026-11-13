@@ -1,0 +1,444 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Helper Functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.size() <= 200 && email.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$');
+    }
+
+    function isBootstrapAdmin() {
+      return isVerified() && request.auth.token.email == 'robisaiful@gmail.com';
+    }
+
+    // Only use inside allow get/create/update/delete (NEVER inside allow list)
+    function isAdmin() {
+      return isBootstrapAdmin() || (isVerified() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function diffKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    // 3. Entity Validators
+    function isValidAdminUser(data) {
+      return data.keys().hasAll(['email', 'addedByUid', 'createdAt'])
+        && data.keys().hasOnly(['email', 'addedByUid', 'createdAt'])
+        && isValidEmail(data.email)
+        && isValidId(data.addedByUid)
+        && data.createdAt is timestamp;
+    }
+
+    function isValidTeacherPublic(data) {
+      return data.keys().hasAll(['name', 'subject', 'kktp', 'visibility', 'ownerUid', 'updatedAt'])
+        && data.keys().hasOnly(['name', 'subject', 'kktp', 'visibility', 'ownerUid', 'updatedAt'])
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 120
+        && (data.kktp is int || data.kktp is float) && data.kktp >= 0 && data.kktp <= 100
+        && data.visibility == 'classroom'
+        && isValidId(data.ownerUid)
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidTeacherPrivate(data) {
+      return data.keys().hasAll(['pin', 'ownerUid', 'updatedAt'])
+        && data.keys().hasOnly(['pin', 'nip', 'recoveryQuestion', 'recoveryAnswer', 'ownerUid', 'updatedAt'])
+        && data.pin is string && data.pin.size() >= 4 && data.pin.size() <= 20
+        && (!('nip' in data) || (data.nip is string && data.nip.size() <= 50))
+        && (!('recoveryQuestion' in data) || (data.recoveryQuestion is string && data.recoveryQuestion.size() <= 200))
+        && (!('recoveryAnswer' in data) || (data.recoveryAnswer is string && data.recoveryAnswer.size() <= 100))
+        && isValidId(data.ownerUid)
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidClassRoom(data) {
+      return data.keys().hasAll(['name', 'visibility', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['name', 'whatsappGroupUrl', 'visibility', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
+        && (!('whatsappGroupUrl' in data) || (data.whatsappGroupUrl is string && data.whatsappGroupUrl.size() <= 300))
+        && data.visibility == 'classroom'
+        && isValidId(data.ownerUid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidStudent(data) {
+      return data.keys().hasAll(['name', 'classId', 'visibility', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['name', 'classId', 'claimedByUid', 'visibility', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && isValidId(data.classId)
+        && (!('claimedByUid' in data) || (data.claimedByUid is string && data.claimedByUid.size() <= 128))
+        && data.visibility == 'classroom'
+        && isValidId(data.ownerUid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidStudentContact(data) {
+      return data.keys().hasAll(['whatsapp', 'ownerUid', 'updatedAt'])
+        && data.keys().hasOnly(['whatsapp', 'studentUid', 'ownerUid', 'updatedAt'])
+        && data.whatsapp is string && data.whatsapp.size() <= 30
+        && (!('studentUid' in data) || (data.studentUid is string && data.studentUid.size() <= 128))
+        && isValidId(data.ownerUid)
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidMaterial(data) {
+      return data.keys().hasAll(['title', 'content', 'classId', 'date', 'visibility', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'title', 'content', 'linkUrl',
+          'attachmentName', 'attachmentSize', 'attachmentType', 'attachmentDataUrl',
+          'classId', 'date', 'visibility', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && data.content is string && data.content.size() <= 20000
+        && (!('linkUrl' in data) || (data.linkUrl is string && data.linkUrl.size() <= 500))
+        && (!('attachmentName' in data) || (data.attachmentName is string && data.attachmentName.size() <= 200))
+        && (!('attachmentSize' in data) || (data.attachmentSize is string && data.attachmentSize.size() <= 40))
+        && (!('attachmentType' in data) || data.attachmentType in ['pdf', 'word', 'excel', 'other'])
+        && (!('attachmentDataUrl' in data) || (data.attachmentDataUrl is string && data.attachmentDataUrl.size() <= 750000))
+        && isValidId(data.classId)
+        && data.date is string && data.date.size() <= 30
+        && data.visibility == 'classroom'
+        && isValidId(data.ownerUid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidTask(data) {
+      return data.keys().hasAll(['title', 'instructions', 'dueDate', 'classId', 'createdAtStr', 'visibility', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'title', 'instructions', 'dueDate', 'classId', 'createdAtStr',
+          'attachmentName', 'attachmentSize', 'attachmentType', 'attachmentDataUrl',
+          'visibility', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && data.instructions is string && data.instructions.size() <= 30000
+        && data.dueDate is string && data.dueDate.size() <= 30
+        && isValidId(data.classId)
+        && data.createdAtStr is string && data.createdAtStr.size() <= 30
+        && (!('attachmentName' in data) || (data.attachmentName is string && data.attachmentName.size() <= 200))
+        && (!('attachmentSize' in data) || (data.attachmentSize is string && data.attachmentSize.size() <= 40))
+        && (!('attachmentType' in data) || data.attachmentType in ['pdf', 'word', 'excel', 'other'])
+        && (!('attachmentDataUrl' in data) || (data.attachmentDataUrl is string && data.attachmentDataUrl.size() <= 750000))
+        && data.visibility == 'classroom'
+        && isValidId(data.ownerUid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSubmission(data) {
+      return data.keys().hasAll(['taskId', 'studentId', 'studentName', 'studentUid', 'ownerUid', 'submittedAt', 'workText', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'taskId', 'studentId', 'studentName', 'studentUid', 'ownerUid',
+          'submittedAt', 'workText', 'linkAttachment', 'score', 'note',
+          'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.taskId)
+        && isValidId(data.studentId)
+        && data.studentName is string && data.studentName.size() >= 1 && data.studentName.size() <= 120
+        && isValidId(data.studentUid)
+        && isValidId(data.ownerUid)
+        && data.submittedAt is string && data.submittedAt.size() <= 40
+        && data.workText is string && data.workText.size() >= 1 && data.workText.size() <= 20000
+        && (!('linkAttachment' in data) || (data.linkAttachment is string && data.linkAttachment.size() <= 500))
+        && (!('score' in data) || ((data.score is int || data.score is float) && data.score >= 0 && data.score <= 100))
+        && (!('note' in data) || (data.note is string && data.note.size() <= 1000))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAttendance(data) {
+      return data.keys().hasAll(['date', 'classId', 'topic', 'records', 'visibility', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['date', 'classId', 'topic', 'records', 'visibility', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.date is string && data.date.size() <= 30
+        && isValidId(data.classId)
+        && data.topic is string && data.topic.size() >= 1 && data.topic.size() <= 200
+        && data.records is map && data.records.size() <= 150
+        && data.visibility == 'classroom'
+        && isValidId(data.ownerUid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidQuestionSet(data) {
+      return data.keys().hasAll(['title', 'subject', 'sourceMaterial', 'createdAtStr', 'pgCount', 'essayCount', 'multipleChoice', 'essay', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['title', 'subject', 'sourceMaterial', 'createdAtStr', 'pgCount', 'essayCount', 'multipleChoice', 'essay', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 120
+        && data.sourceMaterial is string && data.sourceMaterial.size() <= 35000
+        && data.createdAtStr is string && data.createdAtStr.size() <= 30
+        && data.pgCount is int && data.pgCount >= 0 && data.pgCount <= 50
+        && data.essayCount is int && data.essayCount >= 0 && data.essayCount <= 5
+        && data.multipleChoice is list && data.multipleChoice.size() <= 50
+        && data.essay is list && data.essay.size() <= 5
+        && isValidId(data.ownerUid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // 4. Connection Probe Document
+    match /test/{docId} {
+      allow get: if isValidId(docId) && isSignedIn();
+      allow list, write: if false;
+    }
+
+    // 5. Admins
+    match /admins/{uid} {
+      allow get: if isValidId(uid) && isVerified() && (uid == request.auth.uid || isBootstrapAdmin());
+      allow list: if isBootstrapAdmin();
+      allow create: if isValidId(uid) && isBootstrapAdmin() && isValidAdminUser(incoming()) && incoming().createdAt == request.time && incoming().addedByUid == request.auth.uid;
+      allow update: if false;
+      allow delete: if isValidId(uid) && isBootstrapAdmin() && uid != request.auth.uid;
+    }
+
+    // 6. Settings (Teacher Public & Private)
+    match /settings/{docId} {
+      allow get: if isValidId(docId) && (
+        (docId == 'teacherPublic' && isVerified())
+        || (docId == 'teacherPrivate' && isAdmin())
+      );
+      allow list: if isBootstrapAdmin();
+      allow create: if isValidId(docId) && isAdmin() && incoming().ownerUid == request.auth.uid && incoming().updatedAt == request.time && (
+        (docId == 'teacherPublic' && isValidTeacherPublic(incoming()))
+        || (docId == 'teacherPrivate' && isValidTeacherPrivate(incoming()))
+      );
+      allow update: if isValidId(docId) && isAdmin() && incoming().ownerUid == existing().ownerUid && incoming().updatedAt == request.time && (
+        (docId == 'teacherPublic' && isValidTeacherPublic(incoming()) && diffKeys().hasOnly(['name', 'subject', 'kktp', 'visibility', 'updatedAt']))
+        || (docId == 'teacherPrivate' && isValidTeacherPrivate(incoming()) && diffKeys().hasOnly(['pin', 'nip', 'recoveryQuestion', 'recoveryAnswer', 'updatedAt']))
+      );
+      allow delete: if false;
+    }
+
+    // 7. Classes
+    match /classes/{classId} {
+      allow get: if isValidId(classId) && isVerified();
+      allow list: if isVerified() && existing().visibility == 'classroom';
+      allow create: if isValidId(classId) && isAdmin() && isValidClassRoom(incoming())
+        && incoming().ownerUid == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(classId) && isAdmin() && isValidClassRoom(incoming())
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && diffKeys().hasOnly(['name', 'whatsappGroupUrl', 'visibility', 'updatedAt']);
+      allow delete: if isValidId(classId) && isAdmin();
+    }
+
+    // 8. Students Roster & Isolated Private Contact
+    match /students/{studentId} {
+      allow get: if isValidId(studentId) && isVerified();
+      allow list: if isVerified() && existing().visibility == 'classroom';
+      allow create: if isValidId(studentId) && isAdmin() && isValidStudent(incoming())
+        && exists(/databases/$(database)/documents/classes/$(incoming().classId))
+        && incoming().ownerUid == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(studentId) && isValidStudent(incoming())
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (isAdmin()
+            && exists(/databases/$(database)/documents/classes/$(incoming().classId))
+            && diffKeys().hasOnly(['name', 'classId', 'claimedByUid', 'visibility', 'updatedAt']))
+          || (isVerified()
+            && diffKeys().hasOnly(['claimedByUid', 'updatedAt'])
+            && incoming().claimedByUid == request.auth.uid
+            && (!('claimedByUid' in existing()) || existing().claimedByUid == '' || existing().claimedByUid == request.auth.uid))
+        );
+      allow delete: if isValidId(studentId) && isAdmin();
+
+      match /private/{docId} {
+        allow get: if isValidId(studentId) && docId == 'contact' && (
+          isAdmin()
+          || (isVerified() && (
+            (resource != null && existing().studentUid == request.auth.uid)
+            || (exists(/databases/$(database)/documents/students/$(studentId))
+              && get(/databases/$(database)/documents/students/$(studentId)).data.claimedByUid == request.auth.uid)
+          ))
+        );
+        allow list: if isVerified() && (
+          existing().studentUid == request.auth.uid
+          || existing().ownerUid == request.auth.uid
+          || isBootstrapAdmin()
+        );
+        allow create: if isValidId(studentId) && docId == 'contact' && isValidStudentContact(incoming())
+          && incoming().updatedAt == request.time
+          && (
+            (isAdmin() && incoming().ownerUid == request.auth.uid)
+            || (isVerified()
+              && incoming().studentUid == request.auth.uid
+              && exists(/databases/$(database)/documents/students/$(studentId))
+              && get(/databases/$(database)/documents/students/$(studentId)).data.claimedByUid == request.auth.uid
+              && incoming().ownerUid == get(/databases/$(database)/documents/students/$(studentId)).data.ownerUid)
+          );
+        allow update: if isValidId(studentId) && docId == 'contact' && isValidStudentContact(incoming())
+          && incoming().ownerUid == existing().ownerUid
+          && incoming().updatedAt == request.time
+          && (
+            (isAdmin() && diffKeys().hasOnly(['whatsapp', 'studentUid', 'updatedAt']))
+            || (isVerified()
+              && diffKeys().hasOnly(['whatsapp', 'studentUid', 'updatedAt'])
+              && incoming().studentUid == request.auth.uid
+              && exists(/databases/$(database)/documents/students/$(studentId))
+              && get(/databases/$(database)/documents/students/$(studentId)).data.claimedByUid == request.auth.uid)
+          );
+        allow delete: if isValidId(studentId) && docId == 'contact' && isAdmin();
+      }
+    }
+
+    // Support collectionGroup('private') queries by teacher/admin or claiming student
+    match /{path=**}/private/{docId} {
+      allow list: if isVerified() && (
+        existing().studentUid == request.auth.uid
+        || existing().ownerUid == request.auth.uid
+        || isBootstrapAdmin()
+      );
+    }
+
+    // 9. Materials
+    match /materials/{materialId} {
+      allow get: if isValidId(materialId) && isVerified();
+      allow list: if isVerified() && existing().visibility == 'classroom';
+      allow create: if isValidId(materialId) && isAdmin() && isValidMaterial(incoming())
+        && (incoming().classId == 'all' || exists(/databases/$(database)/documents/classes/$(incoming().classId)))
+        && incoming().ownerUid == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(materialId) && isAdmin() && isValidMaterial(incoming())
+        && (incoming().classId == 'all' || exists(/databases/$(database)/documents/classes/$(incoming().classId)))
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && diffKeys().hasOnly([
+          'title', 'content', 'linkUrl',
+          'attachmentName', 'attachmentSize', 'attachmentType', 'attachmentDataUrl',
+          'classId', 'date', 'visibility', 'updatedAt'
+        ]);
+      allow delete: if isValidId(materialId) && isAdmin();
+    }
+
+    // 10. Tasks
+    match /tasks/{taskId} {
+      allow get: if isValidId(taskId) && isVerified();
+      allow list: if isVerified() && existing().visibility == 'classroom';
+      allow create: if isValidId(taskId) && isAdmin() && isValidTask(incoming())
+        && (incoming().classId == 'all' || exists(/databases/$(database)/documents/classes/$(incoming().classId)))
+        && incoming().ownerUid == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(taskId) && isAdmin() && isValidTask(incoming())
+        && (incoming().classId == 'all' || exists(/databases/$(database)/documents/classes/$(incoming().classId)))
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && diffKeys().hasOnly([
+          'title', 'instructions', 'dueDate', 'classId', 'createdAtStr',
+          'attachmentName', 'attachmentSize', 'attachmentType', 'attachmentDataUrl',
+          'visibility', 'updatedAt'
+        ]);
+      allow delete: if isValidId(taskId) && isAdmin();
+    }
+
+    // 11. Submissions
+    match /submissions/{submissionId} {
+      allow get: if isValidId(submissionId) && (
+        isAdmin()
+        || (isVerified() && existing().studentUid == request.auth.uid)
+      );
+      allow list: if isVerified() && (
+        existing().studentUid == request.auth.uid
+        || existing().ownerUid == request.auth.uid
+        || isBootstrapAdmin()
+      );
+      allow create: if isValidId(submissionId) && isVerified() && isValidSubmission(incoming())
+        && exists(/databases/$(database)/documents/tasks/$(incoming().taskId))
+        && exists(/databases/$(database)/documents/students/$(incoming().studentId))
+        && incoming().studentUid == request.auth.uid
+        && incoming().ownerUid == get(/databases/$(database)/documents/tasks/$(incoming().taskId)).data.ownerUid
+        && !('score' in incoming())
+        && !('note' in incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(submissionId) && isValidSubmission(incoming())
+        && incoming().taskId == existing().taskId
+        && incoming().studentId == existing().studentId
+        && incoming().studentUid == existing().studentUid
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (isAdmin() && diffKeys().hasOnly(['score', 'note', 'updatedAt']))
+          || (isVerified()
+            && existing().studentUid == request.auth.uid
+            && diffKeys().hasOnly(['submittedAt', 'workText', 'linkAttachment', 'updatedAt']))
+        );
+      allow delete: if isValidId(submissionId) && isAdmin();
+    }
+
+    // 12. Attendance Records
+    match /attendance/{attendanceId} {
+      allow get: if isValidId(attendanceId) && isVerified();
+      allow list: if isVerified() && existing().visibility == 'classroom';
+      allow create: if isValidId(attendanceId) && isAdmin() && isValidAttendance(incoming())
+        && exists(/databases/$(database)/documents/classes/$(incoming().classId))
+        && incoming().ownerUid == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(attendanceId) && isAdmin() && isValidAttendance(incoming())
+        && exists(/databases/$(database)/documents/classes/$(incoming().classId))
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && diffKeys().hasOnly(['date', 'classId', 'topic', 'records', 'visibility', 'updatedAt']);
+      allow delete: if isValidId(attendanceId) && isAdmin();
+    }
+
+    // 13. AI Question Sets (Teacher-only bank with answer keys)
+    match /questionSets/{setId} {
+      allow get: if isValidId(setId) && isAdmin();
+      allow list: if isVerified() && (
+        existing().ownerUid == request.auth.uid
+        || isBootstrapAdmin()
+      );
+      allow create: if isValidId(setId) && isAdmin() && isValidQuestionSet(incoming())
+        && incoming().ownerUid == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(setId) && isAdmin() && isValidQuestionSet(incoming())
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && diffKeys().hasOnly(['title', 'subject', 'sourceMaterial', 'createdAtStr', 'pgCount', 'essayCount', 'multipleChoice', 'essay', 'updatedAt']);
+      allow delete: if isValidId(setId) && isAdmin();
+    }
+  }
+}

@@ -24,7 +24,6 @@ import {
   FileText,
 } from 'lucide-react';
 
-const STORAGE_KEY = 'gm_ai_questions';
 const OPTION_LABELS = ['A', 'B', 'C', 'D'] as const;
 
 const escapeHtml = (str: string) =>
@@ -131,7 +130,17 @@ interface BuatSoalAITabProps {
 }
 
 export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks }) => {
-  const { teacher, materials, classes, activeClassId, addTask } = useLMS();
+  const {
+    teacher,
+    materials,
+    classes,
+    activeClassId,
+    addTask,
+    questionSets: savedSets,
+    addQuestionSet,
+    updateQuestionSet,
+    deleteQuestionSet,
+  } = useLMS();
 
   const [uraianMateri, setUraianMateri] = useState('');
   const [pgCount, setPgCount] = useState<number>(10);
@@ -141,27 +150,7 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks 
   const [isGenerating, setIsGenerating] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const [savedSets, setSavedSets] = useState<GeneratedQuestionSet[]>(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const [activeSetId, setActiveSetId] = useState<string | null>(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) && parsed.length > 0 ? parsed[0].id : null;
-    } catch {
-      return null;
-    }
-  });
+  const [activeSetId, setActiveSetId] = useState<string | null>(() => savedSets[0]?.id || null);
 
   const [showAnswerKey, setShowAnswerKey] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -177,12 +166,12 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks 
   const [shareSuccessMsg, setShareSuccessMsg] = useState('');
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(savedSets));
-    } catch (err) {
-      console.warn('Gagal menyimpan riwayat soal AI:', err);
+    if (!activeSetId && savedSets.length > 0) {
+      setActiveSetId(savedSets[0].id);
+    } else if (activeSetId && savedSets.length > 0 && !savedSets.some((s) => s.id === activeSetId)) {
+      setActiveSetId(savedSets[0].id);
     }
-  }, [savedSets]);
+  }, [savedSets, activeSetId]);
 
   useEffect(() => {
     setShareClassId(activeClassId || 'all');
@@ -317,7 +306,7 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks 
         essay: esList,
       };
 
-      setSavedSets((prev) => [newSet, ...prev.slice(0, 14)]);
+      addQuestionSet(newSet);
       setActiveSetId(newSet.id);
       setIsShareOpen(false);
     } catch (err) {
@@ -329,7 +318,8 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks 
 
   const updateActiveSet = (updater: (current: GeneratedQuestionSet) => GeneratedQuestionSet) => {
     if (!activeSet) return;
-    setSavedSets((prev) => prev.map((s) => (s.id === activeSet.id ? updater(s) : s)));
+    const updated = updater(activeSet);
+    updateQuestionSet(activeSet.id, updated);
   };
 
   const handleUpdateTitle = (title: string) => {
@@ -377,13 +367,11 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks 
   };
 
   const handleDeleteSet = (id: string) => {
-    setSavedSets((prev) => {
-      const remaining = prev.filter((s) => s.id !== id);
-      if (activeSetId === id) {
-        setActiveSetId(remaining[0]?.id || null);
-      }
-      return remaining;
-    });
+    const remaining = savedSets.filter((s) => s.id !== id);
+    deleteQuestionSet(id);
+    if (activeSetId === id) {
+      setActiveSetId(remaining[0]?.id || null);
+    }
   };
 
   const handleDownloadWord = (includeKey: boolean) => {

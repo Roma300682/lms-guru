@@ -13,10 +13,19 @@ import { DeployGuideModal } from './components/modals/DeployGuideModal';
 import { LoginPage } from './components/LoginPage';
 
 const MainContent: React.FC = () => {
-  const { viewMode, authSession } = useLMS();
+  const { viewMode, authSession, authLoading } = useLMS();
   const [activeTab, setActiveTab] = useState<'materi' | 'tugas' | 'soal-ai' | 'whatsapp' | 'siswa' | 'rekap'>('materi');
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isDeployModalOpen, setIsDeployModalOpen] = useState(false);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mb-3" />
+        <p className="text-xs font-medium text-slate-600">Memuat data aplikasi...</p>
+      </div>
+    );
+  }
 
   // If user is not logged in, show clean lightweight LoginPage
   if (!authSession) {

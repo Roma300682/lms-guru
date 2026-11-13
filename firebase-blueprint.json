@@ -1,0 +1,526 @@
+{
+  "entities": {
+    "AdminUser": {
+      "title": "AdminUser",
+      "description": "Pengguna dengan hak akses guru/administrator LMS",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 200
+        },
+        "addedByUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["email", "addedByUid", "createdAt"]
+    },
+    "TeacherPublic": {
+      "title": "TeacherPublic",
+      "description": "Profil publik guru mata pelajaran untuk tampilan siswa",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "kktp": {
+          "type": "number"
+        },
+        "visibility": {
+          "type": "string",
+          "enum": ["classroom"]
+        },
+        "ownerUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["name", "subject", "kktp", "visibility", "ownerUid", "updatedAt"]
+    },
+    "TeacherPrivate": {
+      "title": "TeacherPrivate",
+      "description": "Pengaturan sensitif guru/admin (PIN, NIP, pemulihan)",
+      "type": "object",
+      "properties": {
+        "pin": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 20
+        },
+        "nip": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "recoveryQuestion": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "recoveryAnswer": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "ownerUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["pin", "ownerUid", "updatedAt"]
+    },
+    "ClassRoom": {
+      "title": "ClassRoom",
+      "description": "Rombel kelas yang diampu guru",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "whatsappGroupUrl": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "visibility": {
+          "type": "string",
+          "enum": ["classroom"]
+        },
+        "ownerUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["name", "visibility", "ownerUid", "createdAt", "updatedAt"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Data roster siswa (tanpa PII sensitif)",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "classId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "claimedByUid": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "visibility": {
+          "type": "string",
+          "enum": ["classroom"]
+        },
+        "ownerUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["name", "classId", "visibility", "ownerUid", "createdAt", "updatedAt"]
+    },
+    "StudentContact": {
+      "title": "StudentContact",
+      "description": "Data kontak privat siswa (nomor WhatsApp terisolasi)",
+      "type": "object",
+      "properties": {
+        "whatsapp": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "studentUid": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "ownerUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["whatsapp", "ownerUid", "updatedAt"]
+    },
+    "Material": {
+      "title": "Material",
+      "description": "Bahan ajar dan modul pembelajaran",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "content": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "linkUrl": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "attachmentName": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "attachmentSize": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "attachmentType": {
+          "type": "string",
+          "enum": ["pdf", "word", "excel", "other"]
+        },
+        "attachmentDataUrl": {
+          "type": "string",
+          "maxLength": 750000
+        },
+        "classId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "date": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "visibility": {
+          "type": "string",
+          "enum": ["classroom"]
+        },
+        "ownerUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["title", "content", "classId", "date", "visibility", "ownerUid", "createdAt", "updatedAt"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "Tugas dan LKPD untuk siswa",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "instructions": {
+          "type": "string",
+          "maxLength": 30000
+        },
+        "dueDate": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "classId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAtStr": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "attachmentName": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "attachmentSize": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "attachmentType": {
+          "type": "string",
+          "enum": ["pdf", "word", "excel", "other"]
+        },
+        "attachmentDataUrl": {
+          "type": "string",
+          "maxLength": 750000
+        },
+        "visibility": {
+          "type": "string",
+          "enum": ["classroom"]
+        },
+        "ownerUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["title", "instructions", "dueDate", "classId", "createdAtStr", "visibility", "ownerUid", "createdAt", "updatedAt"]
+    },
+    "Submission": {
+      "title": "Submission",
+      "description": "Pengumpulan tugas dan penilaian siswa",
+      "type": "object",
+      "properties": {
+        "taskId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "studentId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "studentName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "studentUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "submittedAt": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "workText": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        },
+        "linkAttachment": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "score": {
+          "type": "number"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["taskId", "studentId", "studentName", "studentUid", "ownerUid", "submittedAt", "workText", "createdAt", "updatedAt"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "Catatan presensi pertemuan per rombel kelas",
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "classId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "topic": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "records": {
+          "type": "object"
+        },
+        "visibility": {
+          "type": "string",
+          "enum": ["classroom"]
+        },
+        "ownerUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["date", "classId", "topic", "records", "visibility", "ownerUid", "createdAt", "updatedAt"]
+    },
+    "QuestionSet": {
+      "title": "QuestionSet",
+      "description": "Bank paket soal hasil AI khusus guru",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "sourceMaterial": {
+          "type": "string",
+          "maxLength": 35000
+        },
+        "createdAtStr": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "pgCount": {
+          "type": "integer"
+        },
+        "essayCount": {
+          "type": "integer"
+        },
+        "multipleChoice": {
+          "type": "array"
+        },
+        "essay": {
+          "type": "array"
+        },
+        "ownerUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["title", "subject", "sourceMaterial", "createdAtStr", "pgCount", "essayCount", "multipleChoice", "essay", "ownerUid", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/admins/{uid}": {
+      "schema": { "$ref": "#/entities/AdminUser" },
+      "description": "Daftar UID guru/admin yang berwenang mengelola LMS"
+    },
+    "/settings/teacherPublic": {
+      "schema": { "$ref": "#/entities/TeacherPublic" },
+      "description": "Informasi publik guru dan mata pelajaran"
+    },
+    "/settings/teacherPrivate": {
+      "schema": { "$ref": "#/entities/TeacherPrivate" },
+      "description": "Pengaturan PIN dan pemulihan khusus guru"
+    },
+    "/classes/{classId}": {
+      "schema": { "$ref": "#/entities/ClassRoom" },
+      "description": "Daftar rombel kelas"
+    },
+    "/students/{studentId}": {
+      "schema": { "$ref": "#/entities/Student" },
+      "description": "Daftar siswa per rombel kelas"
+    },
+    "/students/{studentId}/private/contact": {
+      "schema": { "$ref": "#/entities/StudentContact" },
+      "description": "Nomor WhatsApp siswa yang terisolasi"
+    },
+    "/materials/{materialId}": {
+      "schema": { "$ref": "#/entities/Material" },
+      "description": "Bahan ajar dan modul pembelajaran"
+    },
+    "/tasks/{taskId}": {
+      "schema": { "$ref": "#/entities/Task" },
+      "description": "Daftar tugas dan LKPD"
+    },
+    "/submissions/{submissionId}": {
+      "schema": { "$ref": "#/entities/Submission" },
+      "description": "Pengumpulan jawaban dan nilai siswa"
+    },
+    "/attendance/{attendanceId}": {
+      "schema": { "$ref": "#/entities/AttendanceRecord" },
+      "description": "Rekap absensi pertemuan"
+    },
+    "/questionSets/{setId}": {
+      "schema": { "$ref": "#/entities/QuestionSet" },
+      "description": "Riwayat soal AI beserta kunci jawaban khusus guru"
+    }
+  }
+}
