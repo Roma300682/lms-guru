@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLMS } from '../context/LMSContext';
-import { BookOpen, ClipboardList, Award, ExternalLink, Send, CheckCircle, Clock, MessageCircle, Check, Edit2, AlertCircle, Cloud, Loader2, UploadCloud } from 'lucide-react';
+import { BookOpen, ClipboardList, Award, ExternalLink, Send, CheckCircle, Clock, MessageCircle, Check, Edit2, AlertCircle, Cloud, Loader2, UploadCloud, MonitorCheck } from 'lucide-react';
 import { FileAttachmentBadge, readFileAsAttachment } from './FileAttachmentBadge';
+import { StudentCbtPanel } from './StudentCbtPanel';
 import { MaterialAttachment } from '../types/lms';
 import { normalizeWhatsAppNumber } from '../utils/whatsapp';
 import { parseSubjects, getPrimarySubject } from '../utils/subjects';
@@ -16,11 +17,14 @@ export const StudentPortal: React.FC = () => {
     tasks,
     submissions,
     attendance,
+    cbtExams,
+    cbtResults,
     teacher,
     currentStudentId,
     setCurrentStudentId,
     updateStudent,
     submitTask,
+    submitCbtAttempt,
     authSession,
     isCloudConnected,
     isStudentCloudSynced,
@@ -33,7 +37,7 @@ export const StudentPortal: React.FC = () => {
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const firebaseAuthProvidersUrl = `https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/providers`;
 
-  const [activeTab, setActiveTab] = useState<'materi' | 'tugas' | 'rekap'>('materi');
+  const [activeTab, setActiveTab] = useState<'materi' | 'tugas' | 'cbt' | 'rekap'>('materi');
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
 
   // Currently selected student
@@ -51,6 +55,9 @@ export const StudentPortal: React.FC = () => {
     (t) => t.classId === 'all' || (student && t.classId === student.classId)
   );
   const classScopedAttendance = attendance.filter((a) => a.classId === student?.classId);
+  const classScopedCbtExams = cbtExams.filter(
+    (ex) => ex.classId === 'all' || (student && ex.classId === student.classId)
+  );
 
   // Build available subjects for student filter
   const studentSubjects: string[] = [];
@@ -68,6 +75,7 @@ export const StudentPortal: React.FC = () => {
   classScopedMaterials.forEach((m) => registerStudentSubject(m.subject));
   classScopedTasks.forEach((t) => registerStudentSubject(t.subject));
   classScopedAttendance.forEach((a) => registerStudentSubject(a.subject));
+  classScopedCbtExams.forEach((ex) => registerStudentSubject(ex.subject));
 
   useEffect(() => {
     if (
@@ -84,9 +92,10 @@ export const StudentPortal: React.FC = () => {
     return resolved.toLowerCase() === selectedSubject.toLowerCase();
   };
 
-  // Filter materials & tasks for this student + subject filter
+  // Filter materials, tasks & CBT exams for this student + subject filter
   const studentMaterials = classScopedMaterials.filter((m) => matchesSelectedSubject(m.subject));
   const studentTasks = classScopedTasks.filter((t) => matchesSelectedSubject(t.subject));
+  const studentCbtExams = classScopedCbtExams.filter((ex) => matchesSelectedSubject(ex.subject));
   const studentAttendance = classScopedAttendance.filter((a) => matchesSelectedSubject(a.subject));
 
   // Task answer submission form state
@@ -498,6 +507,18 @@ export const StudentPortal: React.FC = () => {
         </button>
 
         <button
+          onClick={() => setActiveTab('cbt')}
+          className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap shrink-0 ${
+            activeTab === 'cbt'
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <MonitorCheck className="w-3.5 h-3.5" />
+          <span>Ujian CBT ({studentCbtExams.length})</span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('rekap')}
           className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap shrink-0 ${
             activeTab === 'rekap'
@@ -506,7 +527,7 @@ export const StudentPortal: React.FC = () => {
           }`}
         >
           <Award className="w-3.5 h-3.5" />
-          <span>Nilai &amp; Kehadiran ({studentTasks.length})</span>
+          <span>Nilai &amp; Kehadiran ({studentTasks.length + studentCbtExams.length})</span>
         </button>
       </div>
 
@@ -824,13 +845,25 @@ export const StudentPortal: React.FC = () => {
         </div>
       )}
 
+      {/* TAB CBT: Ujian CBT Online & Hasil Langsung */}
+      {activeTab === 'cbt' && (
+        <StudentCbtPanel
+          student={student}
+          exams={studentCbtExams}
+          results={cbtResults}
+          kktp={typeof teacher.kktp === 'number' ? teacher.kktp : 75}
+          fallbackSubject={fallbackSubject}
+          onSubmitAttempt={submitCbtAttempt}
+        />
+      )}
+
       {/* TAB 3: Nilai & Kehadiran Saya */}
       {activeTab === 'rekap' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Card 1: Nilai Tugas */}
+          {/* Card 1: Nilai Tugas & CBT */}
           <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4 shadow-xs">
             <h3 className="text-sm font-semibold text-slate-900 flex items-center justify-between gap-2">
-              <span>Rekap Nilai Tugas</span>
+              <span>Rekap Nilai Tugas &amp; CBT</span>
               <span className="text-xs font-normal text-slate-500 text-right">
                 {selectedSubject === 'all'
                   ? (teacherSubjects.join(' · ') || teacher.subject)
@@ -838,7 +871,55 @@ export const StudentPortal: React.FC = () => {
               </span>
             </h3>
 
+            {studentCbtExams.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-[11px] font-bold text-emerald-700 uppercase tracking-wide">
+                  Ujian CBT Online
+                </div>
+                {studentCbtExams.map((exam) => {
+                  const attempt = cbtResults.find(
+                    (r) => r.examId === exam.id && r.studentId === student?.id
+                  );
+                  return (
+                    <div
+                      key={exam.id}
+                      className="flex items-center justify-between p-3 rounded-lg border border-emerald-100 bg-emerald-50/40 text-xs"
+                    >
+                      <div className="min-w-0 pr-2">
+                        <span className="font-medium text-slate-800 line-clamp-1 block">
+                          {exam.title}
+                        </span>
+                        <span className="text-[10px] text-emerald-700 font-medium">
+                          {exam.subject || fallbackSubject} · CBT
+                        </span>
+                      </div>
+                      <span className="font-mono font-bold text-slate-900 shrink-0 ml-2">
+                        {attempt ? (
+                          <span
+                            className={
+                              attempt.finalScore >= (teacher.kktp ?? 75)
+                                ? 'text-emerald-700'
+                                : 'text-rose-600'
+                            }
+                          >
+                            {attempt.finalScore}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 font-normal">Belum Dikerjakan</span>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             <div className="space-y-2">
+              {studentCbtExams.length > 0 && (
+                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wide pt-1">
+                  Tugas &amp; LKPD
+                </div>
+              )}
               {studentTasks.map((task) => {
                 const sub = submissions.find(
                   (s) => s.taskId === task.id && s.studentId === student?.id
@@ -868,6 +949,11 @@ export const StudentPortal: React.FC = () => {
                   </div>
                 );
               })}
+              {studentTasks.length === 0 && studentCbtExams.length === 0 && (
+                <p className="text-xs text-slate-400 py-4 text-center">
+                  Belum ada nilai tugas atau ujian CBT untuk kelas ini.
+                </p>
+              )}
             </div>
           </div>
 

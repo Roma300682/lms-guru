@@ -503,6 +503,167 @@
         }
       },
       "required": ["title", "subject", "sourceMaterial", "createdAtStr", "pgCount", "essayCount", "multipleChoice", "essay", "ownerUid", "createdAt", "updatedAt"]
+    },
+    "CbtExam": {
+      "title": "CbtExam",
+      "description": "Sesi ujian CBT online yang diterbitkan dari paket soal AI untuk dikerjakan siswa",
+      "type": "object",
+      "properties": {
+        "questionSetId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "classId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "durationMinutes": {
+          "type": "integer"
+        },
+        "showResultToStudent": {
+          "type": "boolean"
+        },
+        "isActive": {
+          "type": "boolean"
+        },
+        "createdAtStr": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "multipleChoice": {
+          "type": "array"
+        },
+        "essay": {
+          "type": "array"
+        },
+        "visibility": {
+          "type": "string",
+          "enum": ["classroom"]
+        },
+        "ownerUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["title", "subject", "classId", "durationMinutes", "showResultToStudent", "isActive", "createdAtStr", "multipleChoice", "essay", "visibility", "ownerUid", "createdAt", "updatedAt"]
+    },
+    "CbtAttempt": {
+      "title": "CbtAttempt",
+      "description": "Hasil pengerjaan CBT siswa beserta rincian jawaban dan skor",
+      "type": "object",
+      "properties": {
+        "examId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "examTitle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "questionSetId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "studentId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "studentName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "classId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "studentUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "pgAnswers": {
+          "type": "object"
+        },
+        "essayAnswers": {
+          "type": "object"
+        },
+        "pgCorrect": {
+          "type": "integer"
+        },
+        "pgTotal": {
+          "type": "integer"
+        },
+        "pgScore": {
+          "type": "number"
+        },
+        "essayScore": {
+          "type": "number"
+        },
+        "finalScore": {
+          "type": "number"
+        },
+        "teacherNote": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "submittedAt": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "durationSpentSec": {
+          "type": "integer"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["examId", "examTitle", "studentId", "studentName", "classId", "subject", "studentUid", "ownerUid", "pgAnswers", "essayAnswers", "pgCorrect", "pgTotal", "pgScore", "finalScore", "submittedAt", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
@@ -549,6 +710,14 @@
     "/questionSets/{setId}": {
       "schema": { "$ref": "#/entities/QuestionSet" },
       "description": "Riwayat soal AI beserta kunci jawaban khusus guru"
+    },
+    "/cbtExams/{examId}": {
+      "schema": { "$ref": "#/entities/CbtExam" },
+      "description": "Sesi ujian CBT online aktif untuk kelas siswa"
+    },
+    "/cbtResults/{resultId}": {
+      "schema": { "$ref": "#/entities/CbtAttempt" },
+      "description": "Hasil pengerjaan ujian CBT siswa dan koreksi guru"
     }
   }
 }

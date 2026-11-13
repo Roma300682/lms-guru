@@ -113,4 +113,37 @@ export interface WhatsAppPrefill {
   onlyUnsubmittedTaskId?: string;
 }
 
+export interface CbtExam {
+  id: string;
+  questionSetId: string;
+  title: string;
+  subject: string;
+  classId: string; // 'all' atau ID kelas tertentu
+  durationMinutes: number;
+  showResultToStudent: boolean; // Langsung tunjukkan nilai & pembahasan setelah selesai
+  isActive: boolean;
+  createdAt: string;
+  multipleChoice: GeneratedPGQuestion[];
+  essay: GeneratedEssayQuestion[];
+}
 
+export interface CbtAttempt {
+  id: string;
+  examId: string;
+  examTitle: string;
+  questionSetId?: string;
+  studentId: string;
+  studentName: string;
+  classId: string;
+  subject: string;
+  pgAnswers: Record<string, number>;
+  essayAnswers: Record<string, string>;
+  pgCorrect: number;
+  pgTotal: number;
+  pgScore: number;
+  essayScore?: number;
+  finalScore: number;
+  teacherNote?: string;
+  submittedAt: string;
+  durationSpentSec?: number;
+}

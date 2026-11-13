@@ -5,12 +5,13 @@ import { Download, Printer, UserCheck, Calendar, Trash2, CheckCircle, AlertCircl
 import { getPrimarySubject } from '../../utils/subjects';
 
 export const RekapTab: React.FC = () => {
-  const { students, tasks, submissions, attendance, deleteAttendance, activeClassId, activeSubject, classes, teacher } = useLMS();
+  const { students, tasks, submissions, cbtExams, cbtResults, attendance, deleteAttendance, activeClassId, activeSubject, classes, teacher } = useLMS();
 
   const [subTab, setSubTab] = useState<'nilai' | 'presensi'>('nilai');
   const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
   const [selectedLocalClassId, setSelectedLocalClassId] = useState<string>(classes[0]?.id || '');
 
+  const kktp = typeof teacher.kktp === 'number' ? teacher.kktp : 75;
   const fallbackSubject = getPrimarySubject(teacher.subject);
   const displayedSubjectLabel = activeSubject !== 'all' ? activeSubject : teacher.subject;
 
@@ -30,6 +31,14 @@ export const RekapTab: React.FC = () => {
     return classOk && subjOk;
   });
 
+  // Filter CBT exams for this class & active subject
+  const classCbtExams = cbtExams.filter((ex) => {
+    const classOk = ex.classId === 'all' || (targetClassId && ex.classId === targetClassId);
+    const subj = ex.subject?.trim() || fallbackSubject;
+    const subjOk = activeSubject === 'all' || subj.toLowerCase() === activeSubject.toLowerCase();
+    return classOk && subjOk;
+  });
+
   // Filter attendance for this class & active subject
   const classAttendance = targetClassId
     ? attendance.filter((a) => {
@@ -43,21 +52,34 @@ export const RekapTab: React.FC = () => {
   const handleExportCSV = () => {
     if (classStudents.length === 0) return;
 
-    const headers = ['No', 'Nama Siswa', ...classTasks.map((t) => t.title), 'Rata-Rata', 'Status KKTP'];
+    const headers = [
+      'No',
+      'Nama Siswa',
+      ...classTasks.map((t) => t.title),
+      ...classCbtExams.map((ex) => `[CBT] ${ex.title}`),
+      'Rata-Rata',
+      'Status KKTP',
+    ];
     const rows = classStudents.map((student, idx) => {
-      const studentScores = classTasks.map((task) => {
+      const taskScores = classTasks.map((task) => {
         const sub = submissions.find((s) => s.taskId === task.id && s.studentId === student.id);
         return sub && sub.score !== undefined ? sub.score : '-';
       });
+      const cbtScores = classCbtExams.map((exam) => {
+        const res = cbtResults.find((r) => r.examId === exam.id && r.studentId === student.id);
+        return res ? res.finalScore : '-';
+      });
 
-      const validScores = studentScores.filter((sc): sc is number => typeof sc === 'number');
+      const validScores = [...taskScores, ...cbtScores].filter(
+        (sc): sc is number => typeof sc === 'number'
+      );
       const avg = validScores.length > 0
         ? Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length)
         : '-';
 
-      const status = typeof avg === 'number' ? (avg >= 75 ? 'Tuntas' : 'Perlu Remedial') : '-';
+      const status = typeof avg === 'number' ? (avg >= kktp ? 'Tuntas' : 'Perlu Remedial') : '-';
 
-      return [idx + 1, `"${student.name}"`, ...studentScores, avg, status].join(',');
+      return [idx + 1, `"${student.name}"`, ...taskScores, ...cbtScores, avg, status].join(',');
     });
 
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows].join('\n');
@@ -194,6 +216,14 @@ export const RekapTab: React.FC = () => {
                       )}
                     </th>
                   ))}
+                  {classCbtExams.map((ex) => (
+                    <th key={ex.id} className="py-3 px-3 text-center min-w-[110px]" title={`CBT: ${ex.title}`}>
+                      <span className="line-clamp-1">{ex.title}</span>
+                      <span className="block text-[10px] font-medium text-emerald-700 truncate">
+                        CBT · {ex.subject || fallbackSubject}
+                      </span>
+                    </th>
+                  ))}
                   <th className="py-3 px-4 text-center font-bold text-slate-900 bg-slate-100/70 min-w-[90px]">
                     Rata-Rata
                   </th>
@@ -203,25 +233,33 @@ export const RekapTab: React.FC = () => {
               <tbody className="divide-y divide-slate-100">
                 {classStudents.length === 0 ? (
                   <tr>
-                    <td colSpan={classTasks.length + 4} className="py-8 text-center text-slate-400">
+                    <td colSpan={classTasks.length + classCbtExams.length + 4} className="py-8 text-center text-slate-400">
                       Tidak ada siswa di kelas ini.
                     </td>
                   </tr>
                 ) : (
                   classStudents.map((student, idx) => {
-                    const studentScores = classTasks.map((task) => {
+                    const taskScores = classTasks.map((task) => {
                       const sub = submissions.find(
                         (s) => s.taskId === task.id && s.studentId === student.id
                       );
                       return sub?.score;
                     });
+                    const cbtScores = classCbtExams.map((exam) => {
+                      const res = cbtResults.find(
+                        (r) => r.examId === exam.id && r.studentId === student.id
+                      );
+                      return res?.finalScore;
+                    });
 
-                    const validScores = studentScores.filter((sc): sc is number => typeof sc === 'number');
+                    const validScores = [...taskScores, ...cbtScores].filter(
+                      (sc): sc is number => typeof sc === 'number'
+                    );
                     const avg = validScores.length > 0
                       ? Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length)
                       : null;
 
-                    const isPass = avg !== null && avg >= 75;
+                    const isPass = avg !== null && avg >= kktp;
 
                     return (
                       <tr key={student.id} className="hover:bg-slate-50/80 transition-colors">
@@ -249,9 +287,29 @@ export const RekapTab: React.FC = () => {
                             </td>
                           );
                         })}
+                        {classCbtExams.map((exam) => {
+                          const res = cbtResults.find(
+                            (r) => r.examId === exam.id && r.studentId === student.id
+                          );
+                          return (
+                            <td key={exam.id} className="py-3 px-3 text-center font-mono">
+                              {res ? (
+                                <span
+                                  className={`font-semibold ${
+                                    res.finalScore >= kktp ? 'text-emerald-700' : 'text-rose-600'
+                                  }`}
+                                >
+                                  {res.finalScore}
+                                </span>
+                              ) : (
+                                <span className="text-slate-300">-</span>
+                              )}
+                            </td>
+                          );
+                        })}
                         <td className="py-3 px-4 text-center font-mono font-bold text-slate-900 bg-slate-50/50">
                           {avg !== null ? (
-                            <span className={avg >= 75 ? 'text-indigo-900' : 'text-rose-600'}>
+                            <span className={avg >= kktp ? 'text-indigo-900' : 'text-rose-600'}>
                               {avg}
                             </span>
                           ) : (

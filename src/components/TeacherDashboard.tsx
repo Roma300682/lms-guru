@@ -6,14 +6,15 @@ import { BuatSoalAITab } from './tabs/BuatSoalAITab';
 import { WhatsAppTab } from './tabs/WhatsAppTab';
 import { SiswaTab } from './tabs/SiswaTab';
 import { RekapTab } from './tabs/RekapTab';
+import { CbtGuruTab } from './tabs/CbtGuruTab';
 import { WhatsAppPrefill } from '../types/lms';
 import { Users, Settings, BookOpen, Upload } from 'lucide-react';
 import { UploadStudentsModal } from './modals/UploadStudentsModal';
 
 interface TeacherDashboardProps {
-  activeTab: 'materi' | 'tugas' | 'soal-ai' | 'whatsapp' | 'siswa' | 'rekap';
+  activeTab: 'materi' | 'tugas' | 'soal-ai' | 'cbt' | 'whatsapp' | 'siswa' | 'rekap';
   onOpenProfile: () => void;
-  onNavigateTab?: (tab: 'materi' | 'tugas' | 'soal-ai' | 'whatsapp' | 'siswa' | 'rekap') => void;
+  onNavigateTab?: (tab: 'materi' | 'tugas' | 'soal-ai' | 'cbt' | 'whatsapp' | 'siswa' | 'rekap') => void;
 }
 
 export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
@@ -189,6 +190,12 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         {activeTab === 'soal-ai' && (
           <BuatSoalAITab
             onNavigateToTasks={onNavigateTab ? () => onNavigateTab('tugas') : undefined}
+            onNavigateToCbt={onNavigateTab ? () => onNavigateTab('cbt') : undefined}
+          />
+        )}
+        {activeTab === 'cbt' && (
+          <CbtGuruTab
+            onNavigateToSoalAI={onNavigateTab ? () => onNavigateTab('soal-ai') : undefined}
           />
         )}
         {activeTab === 'whatsapp' && (

@@ -219,6 +219,67 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    function isValidCbtExam(data) {
+      return data.keys().hasAll([
+          'title', 'subject', 'classId', 'durationMinutes', 'showResultToStudent', 'isActive',
+          'createdAtStr', 'multipleChoice', 'essay', 'visibility', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'questionSetId', 'title', 'subject', 'classId', 'durationMinutes', 'showResultToStudent',
+          'isActive', 'createdAtStr', 'multipleChoice', 'essay', 'visibility', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && (!('questionSetId' in data) || (data.questionSetId is string && data.questionSetId.size() <= 128))
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 120
+        && isValidId(data.classId)
+        && data.durationMinutes is int && data.durationMinutes >= 1 && data.durationMinutes <= 240
+        && data.showResultToStudent is bool
+        && data.isActive is bool
+        && data.createdAtStr is string && data.createdAtStr.size() <= 30
+        && data.multipleChoice is list && data.multipleChoice.size() <= 50
+        && data.essay is list && data.essay.size() <= 5
+        && data.visibility == 'classroom'
+        && isValidId(data.ownerUid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCbtResult(data) {
+      return data.keys().hasAll([
+          'examId', 'examTitle', 'studentId', 'studentName', 'classId', 'subject',
+          'studentUid', 'ownerUid', 'pgAnswers', 'essayAnswers',
+          'pgCorrect', 'pgTotal', 'pgScore', 'finalScore', 'submittedAt',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'examId', 'examTitle', 'questionSetId', 'studentId', 'studentName', 'classId', 'subject',
+          'studentUid', 'ownerUid', 'pgAnswers', 'essayAnswers',
+          'pgCorrect', 'pgTotal', 'pgScore', 'essayScore', 'finalScore',
+          'teacherNote', 'submittedAt', 'durationSpentSec', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.examId)
+        && data.examTitle is string && data.examTitle.size() >= 1 && data.examTitle.size() <= 200
+        && (!('questionSetId' in data) || (data.questionSetId is string && data.questionSetId.size() <= 128))
+        && isValidId(data.studentId)
+        && data.studentName is string && data.studentName.size() >= 1 && data.studentName.size() <= 120
+        && isValidId(data.classId)
+        && data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 120
+        && isValidId(data.studentUid)
+        && isValidId(data.ownerUid)
+        && data.pgAnswers is map && data.pgAnswers.size() <= 50
+        && data.essayAnswers is map && data.essayAnswers.size() <= 10
+        && data.pgCorrect is int && data.pgCorrect >= 0 && data.pgCorrect <= 50
+        && data.pgTotal is int && data.pgTotal >= 0 && data.pgTotal <= 50
+        && (data.pgScore is int || data.pgScore is float) && data.pgScore >= 0 && data.pgScore <= 100
+        && (!('essayScore' in data) || ((data.essayScore is int || data.essayScore is float) && data.essayScore >= 0 && data.essayScore <= 100))
+        && (data.finalScore is int || data.finalScore is float) && data.finalScore >= 0 && data.finalScore <= 100
+        && (!('teacherNote' in data) || (data.teacherNote is string && data.teacherNote.size() <= 1000))
+        && data.submittedAt is string && data.submittedAt.size() <= 40
+        && (!('durationSpentSec' in data) || (data.durationSpentSec is int && data.durationSpentSec >= 0 && data.durationSpentSec <= 30000))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
     // 4. Connection Probe Document
     match /test/{docId} {
       allow get: if isValidId(docId) && isSignedIn();
@@ -459,6 +520,59 @@ service cloud.firestore {
         && incoming().updatedAt == request.time
         && diffKeys().hasOnly(['title', 'subject', 'sourceMaterial', 'createdAtStr', 'pgCount', 'essayCount', 'multipleChoice', 'essay', 'updatedAt']);
       allow delete: if isValidId(setId) && isAdmin();
+    }
+
+    // 14. Online CBT Exams (Published from AI Question Sets)
+    match /cbtExams/{examId} {
+      allow get: if isValidId(examId) && isStudentSession();
+      allow list: if isStudentSession() && existing().visibility == 'classroom';
+      allow create: if isValidId(examId) && isAdmin() && isValidCbtExam(incoming())
+        && (incoming().classId == 'all' || exists(/databases/$(database)/documents/classes/$(incoming().classId)))
+        && incoming().ownerUid == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(examId) && isAdmin() && isValidCbtExam(incoming())
+        && (incoming().classId == 'all' || exists(/databases/$(database)/documents/classes/$(incoming().classId)))
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && diffKeys().hasOnly([
+          'title', 'subject', 'classId', 'durationMinutes',
+          'showResultToStudent', 'isActive', 'multipleChoice', 'essay',
+          'visibility', 'updatedAt'
+        ]);
+      allow delete: if isValidId(examId) && isAdmin();
+    }
+
+    // 15. Student CBT Attempts & Teacher Grading Results
+    match /cbtResults/{resultId} {
+      allow get: if isValidId(resultId) && (
+        isAdmin()
+        || (isStudentSession() && existing().studentUid == request.auth.uid)
+      );
+      allow list: if isStudentSession() && (
+        existing().studentUid == request.auth.uid
+        || (isVerified() && existing().ownerUid == request.auth.uid)
+        || isBootstrapAdmin()
+      );
+      allow create: if isValidId(resultId) && isStudentSession() && isValidCbtResult(incoming())
+        && exists(/databases/$(database)/documents/cbtExams/$(incoming().examId))
+        && exists(/databases/$(database)/documents/students/$(incoming().studentId))
+        && incoming().studentUid == request.auth.uid
+        && incoming().ownerUid == get(/databases/$(database)/documents/cbtExams/$(incoming().examId)).data.ownerUid
+        && !('essayScore' in incoming())
+        && !('teacherNote' in incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(resultId) && isAdmin() && isValidCbtResult(incoming())
+        && incoming().examId == existing().examId
+        && incoming().studentId == existing().studentId
+        && incoming().studentUid == existing().studentUid
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && diffKeys().hasOnly(['essayScore', 'finalScore', 'teacherNote', 'updatedAt']);
+      allow delete: if isValidId(resultId) && isAdmin();
     }
   }
 }

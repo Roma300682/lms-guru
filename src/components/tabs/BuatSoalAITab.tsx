@@ -22,6 +22,7 @@ import {
   AlertCircle,
   CheckCircle2,
   FileText,
+  MonitorCheck,
 } from 'lucide-react';
 import { getPrimarySubject } from '../../utils/subjects';
 
@@ -128,9 +129,13 @@ const formatSize = (byteCount: number): string => {
 
 interface BuatSoalAITabProps {
   onNavigateToTasks?: () => void;
+  onNavigateToCbt?: () => void;
 }
 
-export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks }) => {
+export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({
+  onNavigateToTasks,
+  onNavigateToCbt,
+}) => {
   const {
     teacher,
     materials,
@@ -139,6 +144,7 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks 
     activeSubject,
     availableSubjects,
     addTask,
+    addCbtExam,
     questionSets: savedSets,
     addQuestionSet,
     updateQuestionSet,
@@ -171,6 +177,13 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks 
   });
   const [shareSuccessMsg, setShareSuccessMsg] = useState('');
 
+  // Publish to Online CBT inline drawer
+  const [isCbtOpen, setIsCbtOpen] = useState(false);
+  const [cbtClassId, setCbtClassId] = useState<string>(activeClassId || 'all');
+  const [cbtDurationMinutes, setCbtDurationMinutes] = useState<number>(45);
+  const [cbtShowResult, setCbtShowResult] = useState<boolean>(true);
+  const [cbtSuccessMsg, setCbtSuccessMsg] = useState('');
+
   useEffect(() => {
     if (!activeSetId && savedSets.length > 0) {
       setActiveSetId(savedSets[0].id);
@@ -181,6 +194,7 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks 
 
   useEffect(() => {
     setShareClassId(activeClassId || 'all');
+    setCbtClassId(activeClassId || 'all');
   }, [activeClassId]);
 
   useEffect(() => {
@@ -495,6 +509,29 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks 
 
     setIsShareOpen(false);
     setShareSuccessMsg('Paket soal berhasil diterbitkan ke menu Tugas & Nilai (tanpa kunci jawaban).');
+  };
+
+  const handlePublishToCbt = () => {
+    if (!activeSet) return;
+    const examId = addCbtExam({
+      questionSetId: activeSet.id,
+      title: activeSet.title,
+      subject: activeSet.subject,
+      classId: cbtClassId || 'all',
+      durationMinutes: Math.min(240, Math.max(1, Math.trunc(cbtDurationMinutes || 45))),
+      showResultToStudent: cbtShowResult,
+      isActive: true,
+      multipleChoice: activeSet.multipleChoice,
+      essay: activeSet.essay,
+    });
+    if (!examId) {
+      setErrorMsg('Pastikan Anda masuk sebagai Guru/Admin Cloud terverifikasi untuk menerbitkan CBT.');
+      return;
+    }
+    setIsCbtOpen(false);
+    setCbtSuccessMsg(
+      `Ujian CBT "${activeSet.title}" resmi aktif! Siswa kini bisa mengerjakan di menu Ujian CBT & nilai langsung masuk ke Ruang Guru.`
+    );
   };
 
   return (
@@ -816,7 +853,21 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks 
                   <button
                     type="button"
                     onClick={() => {
+                      setIsCbtOpen((v) => !v);
+                      setIsShareOpen(false);
+                      setCbtSuccessMsg('');
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-xs transition-colors"
+                  >
+                    <MonitorCheck className="w-3.5 h-3.5" />
+                    <span>Terbitkan CBT Online</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
                       setIsShareOpen((v) => !v);
+                      setIsCbtOpen(false);
                       setShareSuccessMsg('');
                     }}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-xs transition-colors"
@@ -870,6 +921,95 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks 
                     <span>Cetak / PDF</span>
                   </button>
                 </div>
+
+                {/* Inline Publish CBT Online Drawer */}
+                {isCbtOpen && (
+                  <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200 space-y-3 print:hidden">
+                    <div className="text-xs font-semibold text-emerald-900 flex items-center gap-1.5">
+                      <MonitorCheck className="w-4 h-4 text-emerald-700" />
+                      <span>Terbitkan Paket Soal Ini Menjadi Ujian CBT Online</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-end">
+                      <div>
+                        <label className="text-[11px] font-medium text-slate-700 block mb-1">
+                          Target Kelas Peserta
+                        </label>
+                        <select
+                          value={cbtClassId}
+                          onChange={(e) => setCbtClassId(e.target.value)}
+                          className="w-full text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white"
+                        >
+                          <option value="all">Semua Kelas</option>
+                          {classes.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-medium text-slate-700 block mb-1">
+                          Durasi Pengerjaan (Menit)
+                        </label>
+                        <input
+                          type="number"
+                          min={5}
+                          max={240}
+                          value={cbtDurationMinutes}
+                          onChange={(e) =>
+                            setCbtDurationMinutes(Math.min(240, Math.max(1, Number(e.target.value) || 30)))
+                          }
+                          className="w-full text-xs font-mono font-bold border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handlePublishToCbt}
+                          className="flex-1 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors"
+                        >
+                          Aktifkan Ujian CBT
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsCbtOpen(false)}
+                          className="px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg"
+                        >
+                          Batal
+                        </button>
+                      </div>
+                    </div>
+                    <label className="flex items-center gap-2 text-xs text-emerald-900 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={cbtShowResult}
+                        onChange={(e) => setCbtShowResult(e.target.checked)}
+                        className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <span>
+                        Langsung tampilkan skor CBT, kunci jawaban &amp; pembahasan ke siswa setelah selesai mengerjakan
+                      </span>
+                    </label>
+                  </div>
+                )}
+
+                {cbtSuccessMsg && (
+                  <div className="flex items-center justify-between gap-2 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs print:hidden">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 shrink-0" />
+                      <span>{cbtSuccessMsg}</span>
+                    </div>
+                    {onNavigateToCbt && (
+                      <button
+                        type="button"
+                        onClick={onNavigateToCbt}
+                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md font-semibold text-[11px] shrink-0"
+                      >
+                        Lihat Hasil CBT di Ruang Guru
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {/* Inline Share to Tugas Kelas Drawer */}
                 {isShareOpen && (

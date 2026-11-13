@@ -40,6 +40,8 @@ import {
   AuthSession,
   GeneratedQuestionSet,
   MaterialAttachment,
+  CbtExam,
+  CbtAttempt,
 } from '../types/lms';
 import {
   initialTeacher,
@@ -69,6 +71,8 @@ interface LMSContextType {
   submissions: Submission[];
   attendance: AttendanceRecord[];
   questionSets: GeneratedQuestionSet[];
+  cbtExams: CbtExam[];
+  cbtResults: CbtAttempt[];
   activeClassId: string; // 'all' or classId
   activeSubject: string; // 'all' or subject name
   viewMode: 'teacher' | 'student';
@@ -147,6 +151,19 @@ interface LMSContextType {
   updateQuestionSet: (id: string, updated: GeneratedQuestionSet) => void;
   deleteQuestionSet: (id: string) => void;
 
+  // CBT Exam & Results Actions
+  addCbtExam: (exam: Omit<CbtExam, 'id' | 'createdAt'>) => string | null;
+  toggleCbtExamActive: (id: string, isActive: boolean) => void;
+  deleteCbtExam: (id: string) => void;
+  submitCbtAttempt: (attempt: Omit<CbtAttempt, 'id' | 'submittedAt'>) => CbtAttempt;
+  gradeCbtAttempt: (
+    attemptId: string,
+    finalScore: number,
+    essayScore?: number,
+    teacherNote?: string
+  ) => void;
+  deleteCbtAttempt: (attemptId: string) => void;
+
   // Reset
   resetData: () => void;
 }
@@ -205,6 +222,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [questionSets, setQuestionSets] = useState<GeneratedQuestionSet[]>(() =>
     safeParse<GeneratedQuestionSet[]>('gm_ai_questions', [])
   );
+  const [cbtExams, setCbtExams] = useState<CbtExam[]>(() =>
+    safeParse<CbtExam[]>('gm_cbt_exams', [])
+  );
+  const [cbtResults, setCbtResults] = useState<CbtAttempt[]>(() =>
+    safeParse<CbtAttempt[]>('gm_cbt_results', [])
+  );
 
   const [activeClassId, setActiveClassId] = useState<string>('c1');
   const [activeSubject, setActiveSubject] = useState<string>('all');
@@ -242,6 +265,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const studentOwnerMapRef = useRef<Record<string, string>>({});
   const studentClaimedMapRef = useRef<Record<string, string>>({});
   const taskOwnerMapRef = useRef<Record<string, string>>({});
+  const cbtExamOwnerMapRef = useRef<Record<string, string>>({});
   const submissionStudentUidMapRef = useRef<Record<string, string>>({});
   const pendingClassWritesRef = useRef<Record<string, Promise<void>>>({});
   const hasSeededCloudRef = useRef<boolean>(false);
@@ -257,6 +281,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     attendance: Set<string>;
     questionSets: Set<string>;
     submissions: Set<string>;
+    cbtExams: Set<string>;
+    cbtResults: Set<string>;
   }>({
     hasTeacherPublic: false,
     hasTeacherPrivate: false,
@@ -268,6 +294,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     attendance: new Set(),
     questionSets: new Set(),
     submissions: new Set(),
+    cbtExams: new Set(),
+    cbtResults: new Set(),
   });
 
   // Keep latest local state refs for initial cloud bootstrap & pre-cloud backup
@@ -280,6 +308,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     submissions,
     attendance,
     questionSets,
+    cbtExams,
+    cbtResults,
   });
   latestLocalRef.current = {
     teacher,
@@ -290,6 +320,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     submissions,
     attendance,
     questionSets,
+    cbtExams,
+    cbtResults,
   };
 
   const isCloudConnected = Boolean(firebaseUser && firebaseUser.emailVerified);
@@ -321,8 +353,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     tasks.forEach((t) => pushItem(t.subject));
     attendance.forEach((a) => pushItem(a.subject));
     questionSets.forEach((q) => pushItem(q.subject));
+    cbtExams.forEach((ex) => pushItem(ex.subject));
     return list;
-  }, [teacherSubjects, materials, tasks, attendance, questionSets]);
+  }, [teacherSubjects, materials, tasks, attendance, questionSets, cbtExams]);
 
   useEffect(() => {
     if (
@@ -468,6 +501,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             attendance: new Set(),
             questionSets: new Set(),
             submissions: new Set(),
+            cbtExams: new Set(),
+            cbtResults: new Set(),
           };
         }
       }
@@ -1296,6 +1331,80 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
     }
 
+    // 9. Online CBT Exams (Classroom-scoped for all students and teachers)
+    unsubscribers.push(
+      onSnapshot(
+        query(collection(db, 'cbtExams'), where('visibility', '==', 'classroom')),
+        (snap) => {
+          cloudIdsRef.current.cbtExams = new Set(snap.docs.map((d) => d.id));
+          const ownerMap: Record<string, string> = {};
+          const list: CbtExam[] = snap.docs.map((docSnap) => {
+            const d = docSnap.data();
+            if (typeof d.ownerUid === 'string') ownerMap[docSnap.id] = d.ownerUid;
+            return {
+              id: docSnap.id,
+              questionSetId: typeof d.questionSetId === 'string' ? d.questionSetId : '',
+              title: d.title || '',
+              subject: d.subject || '',
+              classId: d.classId || 'all',
+              durationMinutes: typeof d.durationMinutes === 'number' ? d.durationMinutes : 30,
+              showResultToStudent: Boolean(d.showResultToStudent),
+              isActive: d.isActive !== false,
+              createdAt: d.createdAtStr || '',
+              multipleChoice: Array.isArray(d.multipleChoice) ? d.multipleChoice : [],
+              essay: Array.isArray(d.essay) ? d.essay : [],
+            };
+          });
+          cbtExamOwnerMapRef.current = ownerMap;
+          list.sort((a, b) => b.id.localeCompare(a.id));
+          setCbtExams(list);
+        },
+        (error) => handleFirestoreError(error, OperationType.LIST, 'cbtExams')
+      )
+    );
+
+    // 10. CBT Results (Admin reads all owned/bootstrap; Student reads only their own studentUid)
+    const cbtResultsQuery = isCloudAdmin
+      ? firebaseUser.email === BOOTSTRAP_ADMIN_EMAIL
+        ? collection(db, 'cbtResults')
+        : query(collection(db, 'cbtResults'), where('ownerUid', '==', firebaseUser.uid))
+      : query(collection(db, 'cbtResults'), where('studentUid', '==', firebaseUser.uid));
+
+    unsubscribers.push(
+      onSnapshot(
+        cbtResultsQuery,
+        (snap) => {
+          cloudIdsRef.current.cbtResults = new Set(snap.docs.map((d) => d.id));
+          const list: CbtAttempt[] = snap.docs.map((docSnap) => {
+            const d = docSnap.data();
+            return {
+              id: docSnap.id,
+              examId: d.examId || '',
+              examTitle: d.examTitle || '',
+              questionSetId: typeof d.questionSetId === 'string' ? d.questionSetId : undefined,
+              studentId: d.studentId || '',
+              studentName: d.studentName || '',
+              classId: d.classId || '',
+              subject: d.subject || '',
+              pgAnswers: (d.pgAnswers as Record<string, number>) || {},
+              essayAnswers: (d.essayAnswers as Record<string, string>) || {},
+              pgCorrect: typeof d.pgCorrect === 'number' ? d.pgCorrect : 0,
+              pgTotal: typeof d.pgTotal === 'number' ? d.pgTotal : 0,
+              pgScore: typeof d.pgScore === 'number' ? d.pgScore : 0,
+              essayScore: typeof d.essayScore === 'number' ? d.essayScore : undefined,
+              finalScore: typeof d.finalScore === 'number' ? d.finalScore : 0,
+              teacherNote: typeof d.teacherNote === 'string' ? d.teacherNote : undefined,
+              submittedAt: d.submittedAt || '',
+              durationSpentSec: typeof d.durationSpentSec === 'number' ? d.durationSpentSec : undefined,
+            };
+          });
+          list.sort((a, b) => b.id.localeCompare(a.id));
+          setCbtResults(list);
+        },
+        (error) => handleFirestoreError(error, OperationType.LIST, 'cbtResults')
+      )
+    );
+
     return () => {
       unsubscribers.forEach((unsub) => unsub());
     };
@@ -1596,6 +1705,22 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.warn('LocalStorage save failed for questionSets:', e);
     }
   }, [questionSets]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('gm_cbt_exams', JSON.stringify(cbtExams));
+    } catch (e) {
+      console.warn('LocalStorage save failed for cbtExams:', e);
+    }
+  }, [cbtExams]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('gm_cbt_results', JSON.stringify(cbtResults));
+    } catch (e) {
+      console.warn('LocalStorage save failed for cbtResults:', e);
+    }
+  }, [cbtResults]);
 
   // Self-heal: ensure all students belong to an existing class (local mode only; Firestore is authoritative in cloud mode)
   useEffect(() => {
@@ -2052,8 +2177,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       submissions,
       attendance,
       questionSets,
+      cbtExams,
+      cbtResults,
       exportDate: new Date().toISOString(),
-      version: '1.1',
+      version: '1.2',
     };
     const jsonStr = JSON.stringify(data, null, 2);
     const blob = new Blob([jsonStr], { type: 'application/json' });
@@ -2226,6 +2353,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const restoredSubmissions = Array.isArray(data.submissions) ? data.submissions : [];
     const restoredAttendance = Array.isArray(data.attendance) ? data.attendance : [];
     const restoredQSets = Array.isArray(data.questionSets) ? data.questionSets : [];
+    const restoredCbtExams = Array.isArray((data as { cbtExams?: CbtExam[] }).cbtExams)
+      ? ((data as { cbtExams?: CbtExam[] }).cbtExams as CbtExam[])
+      : [];
+    const restoredCbtResults = Array.isArray((data as { cbtResults?: CbtAttempt[] }).cbtResults)
+      ? ((data as { cbtResults?: CbtAttempt[] }).cbtResults as CbtAttempt[])
+      : [];
 
     restoredMaterials.forEach((m) => {
       if (m.attachment?.dataUrl) saveFileAttachment(m.id, m.attachment.dataUrl);
@@ -2242,6 +2375,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSubmissions(restoredSubmissions);
     setAttendance(restoredAttendance);
     setQuestionSets(restoredQSets);
+    setCbtExams(restoredCbtExams);
+    setCbtResults(restoredCbtResults);
 
     // Save to gm_precloud_backup so it stays available even before cloud login
     try {
@@ -2672,6 +2807,241 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
+  // Online CBT Exam & Attempt Actions
+  const addCbtExam = (exam: Omit<CbtExam, 'id' | 'createdAt'>): string | null => {
+    if (!isAuthorizedTeacher || !firebaseUser) return null;
+    const now = new Date();
+    const todayStr = `${now.toISOString().split('T')[0]} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const examId = 'cbt_' + Date.now();
+    const cleanDuration = Math.min(240, Math.max(1, Math.trunc(exam.durationMinutes || 30)));
+    const sanitizedMC: GeneratedQuestionSet['multipleChoice'] = (exam.multipleChoice || [])
+      .slice(0, 50)
+      .map((q) => ({
+        id: clampStr(q.id || `pg_${Math.random().toString(36).slice(2, 7)}`, 64),
+        question: clampStr(q.question || '', 2000),
+        options: Array.isArray(q.options) ? q.options.slice(0, 4).map((o) => clampStr(String(o || ''), 500)) : [],
+        correctIndex: typeof q.correctIndex === 'number' ? Math.min(3, Math.max(0, Math.trunc(q.correctIndex))) : 0,
+        explanation: q.explanation ? clampStr(q.explanation, 1000) : '',
+      }));
+    const sanitizedEssay: GeneratedQuestionSet['essay'] = (exam.essay || [])
+      .slice(0, 5)
+      .map((q) => ({
+        id: clampStr(q.id || `es_${Math.random().toString(36).slice(2, 7)}`, 64),
+        question: clampStr(q.question || '', 2000),
+        answerKey: clampStr(q.answerKey || '', 2000),
+      }));
+
+    const newExam: CbtExam = {
+      id: examId,
+      questionSetId: clampStr(exam.questionSetId || '', 128),
+      title: clampStr(exam.title.trim() || 'Ujian CBT Online', 200),
+      subject: clampStr(exam.subject.trim() || getPrimarySubject(teacher.subject), 120),
+      classId: exam.classId || 'all',
+      durationMinutes: cleanDuration,
+      showResultToStudent: Boolean(exam.showResultToStudent),
+      isActive: exam.isActive !== false,
+      createdAt: todayStr,
+      multipleChoice: sanitizedMC,
+      essay: sanitizedEssay,
+    };
+
+    setCbtExams((prev) => [newExam, ...prev]);
+    cbtExamOwnerMapRef.current[newExam.id] = firebaseUser.uid;
+
+    const writeCbt = async () => {
+      try {
+        if (newExam.classId !== 'all') {
+          const pendingClass = pendingClassWritesRef.current[newExam.classId];
+          if (pendingClass) {
+            await pendingClass;
+          }
+        }
+        await setDoc(doc(db, 'cbtExams', newExam.id), {
+          questionSetId: newExam.questionSetId,
+          title: newExam.title,
+          subject: newExam.subject,
+          classId: newExam.classId,
+          durationMinutes: newExam.durationMinutes,
+          showResultToStudent: newExam.showResultToStudent,
+          isActive: newExam.isActive,
+          createdAtStr: clampStr(todayStr, 30),
+          multipleChoice: newExam.multipleChoice,
+          essay: newExam.essay,
+          visibility: 'classroom',
+          ownerUid: firebaseUser.uid,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, `cbtExams/${newExam.id}`);
+      }
+    };
+    void writeCbt();
+    return newExam.id;
+  };
+
+  const toggleCbtExamActive = (id: string, isActive: boolean) => {
+    if (!isAuthorizedTeacher) return;
+    setCbtExams((prev) => prev.map((ex) => (ex.id === id ? { ...ex, isActive } : ex)));
+    void updateDoc(doc(db, 'cbtExams', id), {
+      isActive,
+      updatedAt: serverTimestamp(),
+    }).catch((err) => handleFirestoreError(err, OperationType.UPDATE, `cbtExams/${id}`));
+  };
+
+  const deleteCbtExam = (id: string) => {
+    if (!isAuthorizedTeacher) return;
+    const removedAttemptIds = cbtResults.filter((r) => r.examId === id).map((r) => r.id);
+    setCbtExams((prev) => prev.filter((ex) => ex.id !== id));
+    setCbtResults((prev) => prev.filter((r) => r.examId !== id));
+
+    const runDelCbt = async () => {
+      try {
+        const batch = writeBatch(db);
+        batch.delete(doc(db, 'cbtExams', id));
+        removedAttemptIds.forEach((rid) => batch.delete(doc(db, 'cbtResults', rid)));
+        await batch.commit();
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `cbtExams/${id}`);
+      }
+    };
+    void runDelCbt();
+  };
+
+  const submitCbtAttempt = (
+    attempt: Omit<CbtAttempt, 'id' | 'submittedAt'>
+  ): CbtAttempt => {
+    const now = new Date();
+    const submittedAt = `${now.toISOString().split('T')[0]} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const resultId =
+      'cbtres_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+
+    const sanitizedPgAnswers: Record<string, number> = {};
+    Object.entries(attempt.pgAnswers || {}).forEach(([k, v]) => {
+      if (typeof v === 'number' && !Number.isNaN(v)) {
+        sanitizedPgAnswers[clampStr(k, 64)] = Math.min(3, Math.max(0, Math.trunc(v)));
+      }
+    });
+
+    const sanitizedEssayAnswers: Record<string, string> = {};
+    Object.entries(attempt.essayAnswers || {}).forEach(([k, v]) => {
+      sanitizedEssayAnswers[clampStr(k, 64)] = clampStr(String(v || ''), 5000);
+    });
+
+    const cleanPgTotal = Math.min(50, Math.max(0, Math.trunc(attempt.pgTotal)));
+    const cleanPgCorrect = Math.min(cleanPgTotal, Math.max(0, Math.trunc(attempt.pgCorrect)));
+    const cleanPgScore = Math.min(100, Math.max(0, Math.round(attempt.pgScore)));
+    const cleanFinalScore = Math.min(100, Math.max(0, Math.round(attempt.finalScore)));
+    const cleanDurationSpent =
+      typeof attempt.durationSpentSec === 'number'
+        ? Math.min(30000, Math.max(0, Math.trunc(attempt.durationSpentSec)))
+        : undefined;
+
+    const newAttempt: CbtAttempt = {
+      id: resultId,
+      examId: attempt.examId,
+      examTitle: clampStr(attempt.examTitle || 'Ujian CBT', 200),
+      questionSetId: attempt.questionSetId ? clampStr(attempt.questionSetId, 128) : undefined,
+      studentId: attempt.studentId,
+      studentName: clampStr(attempt.studentName || 'Siswa', 120),
+      classId: attempt.classId || 'all',
+      subject: clampStr(attempt.subject || getPrimarySubject(teacher.subject), 120),
+      pgAnswers: sanitizedPgAnswers,
+      essayAnswers: sanitizedEssayAnswers,
+      pgCorrect: cleanPgCorrect,
+      pgTotal: cleanPgTotal,
+      pgScore: cleanPgScore,
+      finalScore: cleanFinalScore,
+      submittedAt,
+      durationSpentSec: cleanDurationSpent,
+    };
+
+    setCbtResults((prev) => [newAttempt, ...prev]);
+
+    if (canAccessStudentCloud && firebaseUser) {
+      const ownerUid =
+        cbtExamOwnerMapRef.current[newAttempt.examId] ||
+        teacherOwnerUidRef.current ||
+        firebaseUser.uid;
+      const payload: Record<string, unknown> = {
+        examId: newAttempt.examId,
+        examTitle: newAttempt.examTitle,
+        ...(newAttempt.questionSetId ? { questionSetId: newAttempt.questionSetId } : {}),
+        studentId: newAttempt.studentId,
+        studentName: newAttempt.studentName,
+        classId: newAttempt.classId,
+        subject: newAttempt.subject,
+        studentUid: firebaseUser.uid,
+        ownerUid,
+        pgAnswers: newAttempt.pgAnswers,
+        essayAnswers: newAttempt.essayAnswers,
+        pgCorrect: newAttempt.pgCorrect,
+        pgTotal: newAttempt.pgTotal,
+        pgScore: newAttempt.pgScore,
+        finalScore: newAttempt.finalScore,
+        submittedAt: clampStr(newAttempt.submittedAt, 40),
+        ...(cleanDurationSpent !== undefined ? { durationSpentSec: cleanDurationSpent } : {}),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+
+      void setDoc(doc(db, 'cbtResults', newAttempt.id), payload).catch((err) =>
+        handleFirestoreError(err, OperationType.CREATE, `cbtResults/${newAttempt.id}`)
+      );
+    }
+
+    return newAttempt;
+  };
+
+  const gradeCbtAttempt = (
+    attemptId: string,
+    finalScore: number,
+    essayScore?: number,
+    teacherNote?: string
+  ) => {
+    if (!isAuthorizedTeacher) return;
+    const cleanFinal = Math.min(100, Math.max(0, Math.round(finalScore)));
+    const cleanEssay =
+      typeof essayScore === 'number' && !Number.isNaN(essayScore)
+        ? Math.min(100, Math.max(0, Math.round(essayScore)))
+        : undefined;
+
+    setCbtResults((prev) =>
+      prev.map((r) =>
+        r.id === attemptId
+          ? {
+              ...r,
+              finalScore: cleanFinal,
+              essayScore: cleanEssay ?? r.essayScore,
+              teacherNote: teacherNote !== undefined ? teacherNote : r.teacherNote,
+            }
+          : r
+      )
+    );
+
+    const payload: Record<string, unknown> = {
+      finalScore: cleanFinal,
+      updatedAt: serverTimestamp(),
+    };
+    if (cleanEssay !== undefined) {
+      payload.essayScore = cleanEssay;
+    }
+    if (teacherNote !== undefined) {
+      payload.teacherNote = clampStr(teacherNote, 1000);
+    }
+    void updateDoc(doc(db, 'cbtResults', attemptId), payload).catch((err) =>
+      handleFirestoreError(err, OperationType.UPDATE, `cbtResults/${attemptId}`)
+    );
+  };
+
+  const deleteCbtAttempt = (attemptId: string) => {
+    if (!isAuthorizedTeacher) return;
+    setCbtResults((prev) => prev.filter((r) => r.id !== attemptId));
+    void deleteDoc(doc(db, 'cbtResults', attemptId)).catch((err) =>
+      handleFirestoreError(err, OperationType.DELETE, `cbtResults/${attemptId}`)
+    );
+  };
+
   const resetCloudDatabase = async (): Promise<{ ok: boolean; message: string }> => {
     if (!isAuthorizedTeacher || !firebaseUser) {
       return {
@@ -2702,16 +3072,23 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         firebaseUser.email?.toLowerCase() === BOOTSTRAP_ADMIN_EMAIL.toLowerCase()
           ? collection(db, 'questionSets')
           : query(collection(db, 'questionSets'), where('ownerUid', '==', firebaseUser.uid));
+      const cbtResQuery =
+        firebaseUser.email?.toLowerCase() === BOOTSTRAP_ADMIN_EMAIL.toLowerCase()
+          ? collection(db, 'cbtResults')
+          : query(collection(db, 'cbtResults'), where('ownerUid', '==', firebaseUser.uid));
 
-      const [classSnap, studentSnap, matSnap, taskSnap, attSnap, subSnap, qSetSnap] = await Promise.all([
-        getDocs(query(collection(db, 'classes'), where('visibility', '==', 'classroom'))),
-        getDocs(query(collection(db, 'students'), where('visibility', '==', 'classroom'))),
-        getDocs(query(collection(db, 'materials'), where('visibility', '==', 'classroom'))),
-        getDocs(query(collection(db, 'tasks'), where('visibility', '==', 'classroom'))),
-        getDocs(query(collection(db, 'attendance'), where('visibility', '==', 'classroom'))),
-        getDocs(subsQuery),
-        getDocs(qSetsQuery),
-      ]);
+      const [classSnap, studentSnap, matSnap, taskSnap, attSnap, subSnap, qSetSnap, cbtExamSnap, cbtResSnap] =
+        await Promise.all([
+          getDocs(query(collection(db, 'classes'), where('visibility', '==', 'classroom'))),
+          getDocs(query(collection(db, 'students'), where('visibility', '==', 'classroom'))),
+          getDocs(query(collection(db, 'materials'), where('visibility', '==', 'classroom'))),
+          getDocs(query(collection(db, 'tasks'), where('visibility', '==', 'classroom'))),
+          getDocs(query(collection(db, 'attendance'), where('visibility', '==', 'classroom'))),
+          getDocs(subsQuery),
+          getDocs(qSetsQuery),
+          getDocs(query(collection(db, 'cbtExams'), where('visibility', '==', 'classroom'))),
+          getDocs(cbtResQuery),
+        ]);
 
       const classIds = new Set([...classSnap.docs.map((d) => d.id), ...cloudIdsRef.current.classes, ...classes.map((c) => c.id)]);
       const studentIds = new Set([...studentSnap.docs.map((d) => d.id), ...cloudIdsRef.current.students, ...studentsRoster.map((s) => s.id)]);
@@ -2720,6 +3097,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const attendanceIds = new Set([...attSnap.docs.map((d) => d.id), ...cloudIdsRef.current.attendance, ...attendance.map((a) => a.id)]);
       const submissionIds = new Set([...subSnap.docs.map((d) => d.id), ...cloudIdsRef.current.submissions, ...submissions.map((s) => s.id)]);
       const qSetIds = new Set([...qSetSnap.docs.map((d) => d.id), ...cloudIdsRef.current.questionSets, ...questionSets.map((q) => q.id)]);
+      const cbtExamIds = new Set([...cbtExamSnap.docs.map((d) => d.id), ...cloudIdsRef.current.cbtExams, ...cbtExams.map((e) => e.id)]);
+      const cbtResultIds = new Set([...cbtResSnap.docs.map((d) => d.id), ...cloudIdsRef.current.cbtResults, ...cbtResults.map((r) => r.id)]);
 
       const refs = [
         ...Array.from(classIds).map((id) => doc(db, 'classes', id)),
@@ -2732,6 +3111,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...Array.from(attendanceIds).map((id) => doc(db, 'attendance', id)),
         ...Array.from(submissionIds).map((id) => doc(db, 'submissions', id)),
         ...Array.from(qSetIds).map((id) => doc(db, 'questionSets', id)),
+        ...Array.from(cbtExamIds).map((id) => doc(db, 'cbtExams', id)),
+        ...Array.from(cbtResultIds).map((id) => doc(db, 'cbtResults', id)),
       ];
 
       for (let i = 0; i < refs.length; i += 350) {
@@ -2752,6 +3133,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       cloudIdsRef.current.attendance = new Set();
       cloudIdsRef.current.submissions = new Set();
       cloudIdsRef.current.questionSets = new Set();
+      cloudIdsRef.current.cbtExams = new Set();
+      cloudIdsRef.current.cbtResults = new Set();
       hasSeededCloudRef.current = true;
 
       setClasses([]);
@@ -2762,6 +3145,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setSubmissions([]);
       setAttendance([]);
       setQuestionSets([]);
+      setCbtExams([]);
+      setCbtResults([]);
       setActiveClassId('all');
       setCurrentStudentId('');
 
@@ -2773,13 +3158,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         'gm_submissions',
         'gm_attendance',
         'gm_ai_questions',
+        'gm_cbt_exams',
+        'gm_cbt_results',
         'gm_precloud_backup',
         'gm_student_session',
       ].forEach((k) => localStorage.removeItem(k));
 
       return {
         ok: true,
-        message: 'Database Cloud dan perangkat ini berhasil dikosongkan total (0 rombel, 0 siswa, 0 materi, 0 tugas, 0 absensi, 0 jawaban, 0 soal AI).',
+        message: 'Database Cloud dan perangkat ini berhasil dikosongkan total (0 rombel, 0 siswa, 0 materi, 0 tugas, 0 absensi, 0 jawaban, 0 soal AI, 0 CBT).',
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -2808,6 +3195,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         submissions,
         attendance,
         questionSets,
+        cbtExams,
+        cbtResults,
         activeClassId,
         activeSubject,
         viewMode,
@@ -2860,6 +3249,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addQuestionSet,
         updateQuestionSet,
         deleteQuestionSet,
+        addCbtExam,
+        toggleCbtExamActive,
+        deleteCbtExam,
+        submitCbtAttempt,
+        gradeCbtAttempt,
+        deleteCbtAttempt,
         resetData,
       }}
     >

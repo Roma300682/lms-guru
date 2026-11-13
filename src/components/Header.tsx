@@ -1,10 +1,10 @@
 import React from 'react';
 import { useLMS } from '../context/LMSContext';
-import { GraduationCap, UserCheck, LogOut, Cloud, ShieldCheck, Sparkles, MessageCircle } from 'lucide-react';
+import { GraduationCap, UserCheck, LogOut, Cloud, ShieldCheck, Sparkles, MessageCircle, MonitorCheck } from 'lucide-react';
 
 interface HeaderProps {
-  activeTab: 'materi' | 'tugas' | 'soal-ai' | 'whatsapp' | 'siswa' | 'rekap';
-  setActiveTab: (tab: 'materi' | 'tugas' | 'soal-ai' | 'whatsapp' | 'siswa' | 'rekap') => void;
+  activeTab: 'materi' | 'tugas' | 'soal-ai' | 'cbt' | 'whatsapp' | 'siswa' | 'rekap';
+  setActiveTab: (tab: 'materi' | 'tugas' | 'soal-ai' | 'cbt' | 'whatsapp' | 'siswa' | 'rekap') => void;
   onOpenProfile: () => void;
   onOpenDeployGuide?: () => void;
 }
@@ -36,7 +36,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
   const isTeacherView = viewMode === 'teacher' && canAccessTeacherView;
 
   const navItems: Array<{
-    id: 'materi' | 'tugas' | 'soal-ai' | 'whatsapp' | 'siswa' | 'rekap';
+    id: 'materi' | 'tugas' | 'soal-ai' | 'cbt' | 'whatsapp' | 'siswa' | 'rekap';
     label: string;
     mobileLabel: string;
     icon?: React.ReactNode;
@@ -60,6 +60,13 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
       mobileLabel: 'Soal AI',
       icon: <Sparkles className="w-3.5 h-3.5 shrink-0" />,
       activeClass: 'bg-indigo-600 text-white md:bg-indigo-50 md:text-indigo-700 md:border md:border-indigo-200 font-semibold',
+    },
+    {
+      id: 'cbt',
+      label: 'CBT & Hasil',
+      mobileLabel: 'CBT',
+      icon: <MonitorCheck className="w-3.5 h-3.5 shrink-0" />,
+      activeClass: 'bg-emerald-600 text-white md:bg-emerald-50 md:text-emerald-700 md:border md:border-emerald-200 font-semibold',
     },
     {
       id: 'whatsapp',
