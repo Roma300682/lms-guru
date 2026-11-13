@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLMS } from '../context/LMSContext';
-import { BookOpen, ClipboardList, Award, ExternalLink, Send, CheckCircle, Clock, MessageCircle, Check, Edit2, AlertCircle, Cloud, Loader2, UploadCloud, MonitorCheck } from 'lucide-react';
+import { BookOpen, ClipboardList, Award, ExternalLink, Send, CheckCircle, Clock, MessageCircle, Check, Edit2, AlertCircle, Cloud, Loader2, UploadCloud, MonitorCheck, X } from 'lucide-react';
 import { FileAttachmentBadge, readFileAsAttachment } from './FileAttachmentBadge';
 import { StudentCbtPanel } from './StudentCbtPanel';
 import { MaterialAttachment } from '../types/lms';
@@ -9,7 +9,15 @@ import { getPrimarySubject } from '../utils/subjects';
 
 import firebaseConfig from '../../firebase-applet-config.json';
 
-export const StudentPortal: React.FC = () => {
+interface StudentPortalProps {
+  isMobileSidebarOpen?: boolean;
+  onCloseMobileSidebar?: () => void;
+}
+
+export const StudentPortal: React.FC<StudentPortalProps> = ({
+  isMobileSidebarOpen = false,
+  onCloseMobileSidebar,
+}) => {
   const {
     students,
     classes,
@@ -411,57 +419,150 @@ export const StudentPortal: React.FC = () => {
         </div>
       )}
 
-      {/* Navigation tabs for Student */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto no-scrollbar">
-        <button
-          onClick={() => setActiveTab('materi')}
-          className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap shrink-0 ${
-            activeTab === 'materi'
-              ? 'bg-slate-900 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <BookOpen className="w-3.5 h-3.5" />
-          <span>Bahan Ajar ({studentMaterials.length})</span>
-        </button>
+      {/* Sidebar + Content Split */}
+      <div className="flex flex-col md:flex-row gap-5 items-start">
+        {/* Desktop / Tablet Sticky Left Sidebar */}
+        <aside className="hidden md:block w-56 lg:w-60 shrink-0 md:sticky md:top-20">
+          <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-xs space-y-1">
+            <div className="px-2.5 pt-1 pb-2 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+              Menu Siswa
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('materi')}
+              className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 text-xs font-semibold rounded-lg transition-colors text-left ${
+                activeTab === 'materi'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+              }`}
+            >
+              <span className="flex items-center gap-2.5 min-w-0">
+                <BookOpen className="w-4 h-4 shrink-0" />
+                <span className="truncate">Bahan Ajar</span>
+              </span>
+              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${activeTab === 'materi' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                {studentMaterials.length}
+              </span>
+            </button>
 
-        <button
-          onClick={() => setActiveTab('tugas')}
-          className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap shrink-0 ${
-            activeTab === 'tugas'
-              ? 'bg-slate-900 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <ClipboardList className="w-3.5 h-3.5" />
-          <span>Tugas &amp; LKPD ({studentTasks.length})</span>
-        </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('tugas')}
+              className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 text-xs font-semibold rounded-lg transition-colors text-left ${
+                activeTab === 'tugas'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+              }`}
+            >
+              <span className="flex items-center gap-2.5 min-w-0">
+                <ClipboardList className="w-4 h-4 shrink-0" />
+                <span className="truncate">Tugas &amp; LKPD</span>
+              </span>
+              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${activeTab === 'tugas' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                {studentTasks.length}
+              </span>
+            </button>
 
-        <button
-          onClick={() => setActiveTab('cbt')}
-          className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap shrink-0 ${
-            activeTab === 'cbt'
-              ? 'bg-emerald-600 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <MonitorCheck className="w-3.5 h-3.5" />
-          <span>Ujian CBT ({studentCbtExams.length})</span>
-        </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('cbt')}
+              className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 text-xs font-semibold rounded-lg transition-colors text-left ${
+                activeTab === 'cbt'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+              }`}
+            >
+              <span className="flex items-center gap-2.5 min-w-0">
+                <MonitorCheck className="w-4 h-4 shrink-0" />
+                <span className="truncate">Ujian CBT</span>
+              </span>
+              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${activeTab === 'cbt' ? 'bg-white/20 text-white' : studentCbtExams.some((e) => e.isActive) ? 'bg-emerald-100 text-emerald-800 font-bold' : 'bg-slate-100 text-slate-600'}`}>
+                {studentCbtExams.length}
+              </span>
+            </button>
 
-        <button
-          onClick={() => setActiveTab('rekap')}
-          className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap shrink-0 ${
-            activeTab === 'rekap'
-              ? 'bg-slate-900 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <Award className="w-3.5 h-3.5" />
-          <span>Nilai &amp; Kehadiran ({studentTasks.length + studentCbtExams.length})</span>
-        </button>
-      </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('rekap')}
+              className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 text-xs font-semibold rounded-lg transition-colors text-left ${
+                activeTab === 'rekap'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+              }`}
+            >
+              <span className="flex items-center gap-2.5 min-w-0">
+                <Award className="w-4 h-4 shrink-0" />
+                <span className="truncate">Nilai &amp; Kehadiran</span>
+              </span>
+              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${activeTab === 'rekap' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                {studentTasks.length + studentCbtExams.length}
+              </span>
+            </button>
+          </div>
+        </aside>
 
+        {/* Mobile Left Slide-Over Drawer */}
+        {isMobileSidebarOpen && (
+          <div className="md:hidden fixed inset-0 z-50 flex">
+            <div
+              className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs"
+              onClick={onCloseMobileSidebar}
+            />
+            <aside className="relative w-72 max-w-[82vw] h-full bg-slate-50 p-3 overflow-y-auto shadow-xl z-10 animate-in slide-in-from-left duration-150">
+              <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-xs space-y-1">
+                <div className="px-2.5 pt-1 pb-2 text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                  <span>Menu Portal Siswa</span>
+                  <button
+                    type="button"
+                    onClick={onCloseMobileSidebar}
+                    className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                    aria-label="Tutup Menu"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                {(
+                  [
+                    { id: 'materi' as const, label: 'Bahan Ajar', icon: <BookOpen className="w-4 h-4 shrink-0" />, count: studentMaterials.length },
+                    { id: 'tugas' as const, label: 'Tugas & LKPD', icon: <ClipboardList className="w-4 h-4 shrink-0" />, count: studentTasks.length },
+                    { id: 'cbt' as const, label: 'Ujian CBT', icon: <MonitorCheck className="w-4 h-4 shrink-0" />, count: studentCbtExams.length },
+                    { id: 'rekap' as const, label: 'Nilai & Kehadiran', icon: <Award className="w-4 h-4 shrink-0" />, count: studentTasks.length + studentCbtExams.length },
+                  ]
+                ).map((item) => {
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveTab(item.id);
+                        onCloseMobileSidebar?.();
+                      }}
+                      className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 text-xs font-semibold rounded-lg transition-colors text-left ${
+                        isActive
+                          ? item.id === 'cbt'
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'bg-slate-900 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2.5 min-w-0">
+                        {item.icon}
+                        <span className="truncate">{item.label}</span>
+                      </span>
+                      <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                        {item.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </aside>
+          </div>
+        )}
+
+        {/* Right Tab Content Column */}
+        <div className="flex-1 min-w-0 w-full space-y-4">
       {/* TAB 1: Bahan Ajar Siswa */}
       {activeTab === 'materi' && (
         <div className="space-y-4">
@@ -936,6 +1037,8 @@ export const StudentPortal: React.FC = () => {
           </div>
         </div>
       )}
+        </div>
+      </div>
     </div>
   );
 };

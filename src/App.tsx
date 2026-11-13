@@ -17,6 +17,7 @@ const MainContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'materi' | 'tugas' | 'soal-ai' | 'cbt' | 'whatsapp' | 'siswa' | 'rekap'>('materi');
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isDeployModalOpen, setIsDeployModalOpen] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   if (authLoading) {
     return (
@@ -47,21 +48,28 @@ const MainContent: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
       <Header
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
         onOpenProfile={handleOpenProfile}
         onOpenDeployGuide={handleOpenDeployGuide}
+        onToggleMobileSidebar={() => setIsMobileSidebarOpen((v) => !v)}
       />
 
-      <div className="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6">
+      <div className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6">
         {viewMode === 'teacher' && canAccessTeacherAdmin ? (
           <TeacherDashboard
             activeTab={activeTab}
             onOpenProfile={handleOpenProfile}
-            onNavigateTab={setActiveTab}
+            onNavigateTab={(tab) => {
+              setActiveTab(tab);
+              setIsMobileSidebarOpen(false);
+            }}
+            isMobileSidebarOpen={isMobileSidebarOpen}
+            onCloseMobileSidebar={() => setIsMobileSidebarOpen(false)}
           />
         ) : (
-          <StudentPortal />
+          <StudentPortal
+            isMobileSidebarOpen={isMobileSidebarOpen}
+            onCloseMobileSidebar={() => setIsMobileSidebarOpen(false)}
+          />
         )}
       </div>
 
