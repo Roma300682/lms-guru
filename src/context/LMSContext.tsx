@@ -1458,10 +1458,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ): Promise<void> => {
     const code = (err as { code?: string })?.code || '';
     const rawMsg = err instanceof Error ? err.message : String(err);
-    console.error('Google Auth failure:', code, err);
 
     if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
       return;
+    }
+
+    if (code === 'auth/unauthorized-domain' || code === 'auth/popup-blocked') {
+      console.warn('Google Auth notice:', code);
+    } else {
+      console.warn('Google Auth failure:', code || rawMsg);
     }
 
     setCloudAuthErrorCode(code || 'auth/unknown');
