@@ -1092,9 +1092,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const targetIds: string[] = isCloudAdmin
       ? studentsRoster.map((s) => s.id)
-      : authSession?.role === 'student' && currentStudentId &&
-        (!studentClaimedMapRef.current[currentStudentId] ||
-          studentClaimedMapRef.current[currentStudentId] === firebaseUser.uid)
+      : authSession?.role === 'student' &&
+        currentStudentId &&
+        studentClaimedMapRef.current[currentStudentId] === firebaseUser.uid
       ? [currentStudentId]
       : [];
 
@@ -1257,6 +1257,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const existingOwner =
       studentOwnerMapRef.current[studentId] || teacherOwnerUidRef.current || firebaseUser.uid;
     const claimedBy = studentClaimedMapRef.current[studentId];
+    let canWriteContact = isCloudAdmin || claimedBy === firebaseUser.uid;
 
     // Claim student record for this authenticated student account if not yet claimed
     if (!isCloudAdmin && (!claimedBy || claimedBy === firebaseUser.uid)) {
@@ -1266,12 +1267,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           updatedAt: serverTimestamp(),
         });
         studentClaimedMapRef.current[studentId] = firebaseUser.uid;
+        canWriteContact = true;
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, `students/${studentId}`);
       }
     }
 
-    if (cleanWa) {
+    if (cleanWa && canWriteContact) {
       const contactPath = `students/${studentId}/private/contact`;
       try {
         await setDoc(doc(db, 'students', studentId, 'private', 'contact'), {

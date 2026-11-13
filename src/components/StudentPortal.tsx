@@ -18,6 +18,7 @@ export const StudentPortal: React.FC = () => {
     updateStudent,
     submitTask,
     authSession,
+    isCloudConnected,
     logout,
   } = useLMS();
 
@@ -88,6 +89,24 @@ export const StudentPortal: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {authSession?.role === 'student' && !isCloudConnected && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-amber-900">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <span>
+              <strong>Belum Terhubung Database Cloud:</strong> Anda masuk di mode lokal, sehingga materi, tugas, dan nilai terbaru dari Guru tidak tampil.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={logout}
+            className="px-3 py-1.5 font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg transition-colors shrink-0 self-start sm:self-auto"
+          >
+            Hubungkan Google Sekarang
+          </button>
+        </div>
+      )}
+
       {/* Student Banner & Switcher */}
       <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">

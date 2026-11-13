@@ -22,6 +22,7 @@ export const LoginPage: React.FC = () => {
     cloudAuthError,
     cloudAuthErrorCode,
     clearCloudAuthError,
+    logout,
   } = useLMS();
   const [copiedHost, setCopiedHost] = useState(false);
 
@@ -35,10 +36,27 @@ export const LoginPage: React.FC = () => {
     setTimeout(() => setCopiedHost(false), 2000);
   };
 
-  const [role, setRole] = useState<'teacher' | 'student'>('teacher');
+  const [role, setRole] = useState<'teacher' | 'student'>(() => {
+    try {
+      const saved = sessionStorage.getItem('gm_login_role_tab');
+      return saved === 'student' ? 'student' : 'teacher';
+    } catch {
+      return 'teacher';
+    }
+  });
+  const [allowOfflineStudentDemo, setAllowOfflineStudentDemo] = useState(false);
   const [isDeployGuideOpen, setIsDeployGuideOpen] = useState(false);
   const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+
+  const switchRoleTab = (nextRole: 'teacher' | 'student') => {
+    setRole(nextRole);
+    try {
+      sessionStorage.setItem('gm_login_role_tab', nextRole);
+    } catch {
+      // ignore sessionStorage error
+    }
+  };
 
   // Teacher login state
   const [pin, setPin] = useState('');
@@ -142,7 +160,7 @@ export const LoginPage: React.FC = () => {
           <button
             type="button"
             onClick={() => {
-              setRole('teacher');
+              switchRoleTab('teacher');
               setTeacherError('');
               clearCloudAuthError();
             }}
@@ -159,7 +177,7 @@ export const LoginPage: React.FC = () => {
           <button
             type="button"
             onClick={() => {
-              setRole('student');
+              switchRoleTab('student');
               clearCloudAuthError();
               const activeStudentId = selectedStudentId || classStudents[0]?.id || '';
               if (!selectedStudentId && classStudents[0]) {
@@ -315,37 +333,65 @@ export const LoginPage: React.FC = () => {
           ) : (
             <div className="space-y-4">
               {!isCloudConnected ? (
-                <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200 space-y-2.5">
-                  <div className="text-xs text-emerald-950 font-semibold">
-                    Hubungkan Akun Google Siswa
+                <div className="p-4 rounded-xl bg-emerald-50/80 border border-emerald-200 space-y-3">
+                  <div className="space-y-1">
+                    <div className="text-xs text-emerald-950 font-bold">
+                      1. Hubungkan Akun Google Siswa Terlebih Dahulu
+                    </div>
+                    <p className="text-[11px] text-emerald-800 leading-relaxed">
+                      Wajib login Google agar daftar kelas, nama siswa, materi, tugas, nomor WhatsApp, dan nilai langsung tersinkron dengan Guru.
+                    </p>
                   </div>
-                  <p className="text-[11px] text-emerald-800 leading-relaxed">
-                    Masuk dengan Google agar data kelas, materi, tugas, nomor WhatsApp, dan jawaban Anda tersimpan langsung di database kelas.
-                  </p>
-                  <button
-                    type="button"
-                    disabled={isGoogleLoading}
-                    onClick={handleStudentGoogleConnect}
-                    className="w-full flex items-center justify-center gap-2 py-2 px-3 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-800 disabled:bg-emerald-400 rounded-lg transition-colors"
-                  >
-                    {isGoogleLoading ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>Menghubungkan...</span>
-                      </>
-                    ) : (
-                      <>
+
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      disabled={isGoogleLoading}
+                      onClick={handleStudentGoogleConnect}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 px-3 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-800 disabled:bg-emerald-400 rounded-lg transition-colors shadow-xs"
+                    >
+                      {isGoogleLoading ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Menghubungkan...</span>
+                        </>
+                      ) : (
+                        <>
+                          <LogIn className="w-3.5 h-3.5" />
+                          <span>Hubungkan Google Sekarang</span>
+                        </>
+                      )}
+                    </button>
+
+                    {!isInIframe && (
+                      <button
+                        type="button"
+                        disabled={isGoogleLoading}
+                        onClick={() => void loginWithGoogleRedirect('student')}
+                        className="w-full flex items-center justify-center gap-1.5 py-2 px-3 text-[11px] font-semibold text-emerald-900 bg-white hover:bg-emerald-100/60 border border-emerald-300 rounded-lg transition-colors"
+                      >
                         <LogIn className="w-3.5 h-3.5" />
-                        <span>Hubungkan Google Sekarang</span>
-                      </>
+                        <span>Login Google Alternatif (Jika Pop-up HP Diblokir)</span>
+                      </button>
                     )}
-                  </button>
+                  </div>
+
+                  <p className="text-[10px] text-emerald-900/80 bg-white/70 border border-emerald-200/70 rounded-lg px-2.5 py-1.5 leading-relaxed">
+                    <strong>Buka dari WhatsApp?</strong> Jika tombol Google gagal di browser dalam WhatsApp, ketuk menu <strong>⋮</strong> (pojok kanan atas) lalu pilih <strong>Buka di Chrome / Browser</strong>.
+                  </p>
                 </div>
               ) : (
                 <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 flex items-center justify-between gap-2">
                   <span className="truncate font-medium">
-                    Akun Google: {firebaseUser?.email}
+                    Terhubung Cloud: {firebaseUser?.email}
                   </span>
+                  <button
+                    type="button"
+                    onClick={logout}
+                    className="text-[11px] font-semibold text-emerald-800 hover:underline shrink-0"
+                  >
+                    Ganti Akun
+                  </button>
                 </div>
               )}
 
@@ -400,15 +446,30 @@ export const LoginPage: React.FC = () => {
                 </div>
               )}
 
-              {classes.length === 0 ? (
+              {!isCloudConnected && !allowOfflineStudentDemo ? (
+                <div className="text-center pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setAllowOfflineStudentDemo(true)}
+                    className="text-[11px] text-slate-400 hover:text-slate-600 underline"
+                  >
+                    Atau masuk mode demo lokal (tanpa sinkronisasi Cloud)
+                  </button>
+                </div>
+              ) : classes.length === 0 ? (
                 <div className="space-y-3 py-1">
                   <div className="bg-amber-50 border border-amber-200 text-amber-800 p-3.5 rounded-xl text-xs">
                     <span className="font-semibold block mb-1">Belum Ada Kelas Terdaftar</span>
-                    Guru belum menambahkan rombel kelas atau mengunggah data siswa. Guru mata pelajaran dapat masuk melalui tab <strong>Guru &amp; Admin</strong> untuk membuat kelas atau mengupload daftar siswa.
+                    Guru belum menambahkan rombel kelas atau mengunggah data siswa ke Database Cloud. Minta guru untuk masuk lewat tab <strong>Guru &amp; Admin</strong> dan menekan <strong>Upload Data Browser Lokal ke Cloud</strong>.
                   </div>
                 </div>
               ) : (
                 <form onSubmit={handleStudentSubmit} className="space-y-4">
+                  {!isCloudConnected && (
+                    <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800">
+                      <strong>Mode Demo Lokal:</strong> Data di bawah hanya contoh perangkat ini (belum tersinkron ke Guru).
+                    </div>
+                  )}
                   <div className="text-xs text-slate-600">
                     Pilih rombel kelas dan nama Anda untuk langsung masuk ke materi dan tugas:
                   </div>
