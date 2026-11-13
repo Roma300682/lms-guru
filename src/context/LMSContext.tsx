@@ -38,6 +38,7 @@ import {
   AttendanceStatus,
   AuthSession,
   GeneratedQuestionSet,
+  MaterialAttachment,
 } from '../types/lms';
 import {
   initialTeacher,
@@ -123,7 +124,13 @@ interface LMSContextType {
   deleteTask: (id: string) => void;
 
   // Submission & Grading Actions
-  submitTask: (taskId: string, studentId: string, workText: string, linkAttachment?: string) => void;
+  submitTask: (
+    taskId: string,
+    studentId: string,
+    workText: string,
+    linkAttachment?: string,
+    attachment?: MaterialAttachment | null
+  ) => void;
   gradeSubmission: (submissionId: string, score: number, note?: string) => void;
 
   // Attendance Actions
@@ -813,6 +820,17 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             updatedAt: serverTimestamp(),
           };
           if (sub.linkAttachment) createSub.linkAttachment = clampStr(sub.linkAttachment, 500);
+          if (sub.attachment) {
+            createSub.attachmentName = clampStr(sub.attachment.name, 200);
+            createSub.attachmentSize = clampStr(sub.attachment.size, 40);
+            createSub.attachmentType = sub.attachment.type;
+            if (
+              sub.attachment.dataUrl &&
+              sub.attachment.dataUrl.length <= MAX_FIRESTORE_ATTACHMENT_CHARS
+            ) {
+              createSub.attachmentDataUrl = sub.attachment.dataUrl;
+            }
+          }
           phase3Ops.push({ mode: 'set', ref: doc(db, 'submissions', subId), data: createSub });
         }
 
@@ -1100,6 +1118,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const list: Submission[] = snap.docs.map((docSnap) => {
             const d = docSnap.data();
             if (typeof d.studentUid === 'string') sUidMap[docSnap.id] = d.studentUid;
+            const hasAttachment = Boolean(d.attachmentName);
             return {
               id: docSnap.id,
               taskId: d.taskId || '',
@@ -1108,6 +1127,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               submittedAt: d.submittedAt || '',
               workText: d.workText || '',
               linkAttachment: d.linkAttachment || undefined,
+              attachment: hasAttachment
+                ? {
+                    name: d.attachmentName,
+                    size: d.attachmentSize || '',
+                    type: d.attachmentType || 'other',
+                    dataUrl: d.attachmentDataUrl || '',
+                  }
+                : undefined,
               score: typeof d.score === 'number' ? d.score : undefined,
               note: typeof d.note === 'string' ? d.note : undefined,
             };
@@ -1115,6 +1142,21 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           submissionStudentUidMapRef.current = sUidMap;
           list.sort((a, b) => b.id.localeCompare(a.id));
           setSubmissions(list);
+          list.forEach((sub) => {
+            if (sub.attachment && !sub.attachment.dataUrl) {
+              void getFileAttachment(sub.id).then((url) => {
+                if (url) {
+                  setSubmissions((prev) =>
+                    prev.map((item) =>
+                      item.id === sub.id && item.attachment && !item.attachment.dataUrl
+                        ? { ...item, attachment: { ...item.attachment, dataUrl: url } }
+                        : item
+                    )
+                  );
+                }
+              });
+            }
+          });
         },
         (error) => handleFirestoreError(error, OperationType.LIST, 'submissions')
       )
@@ -2086,6 +2128,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     restoredTasks.forEach((t) => {
       if (t.attachment?.dataUrl) saveFileAttachment(t.id, t.attachment.dataUrl);
     });
+    restoredSubmissions.forEach((sub) => {
+      if (sub.attachment?.dataUrl) saveFileAttachment(sub.id, sub.attachment.dataUrl);
+    });
 
     setMaterials(restoredMaterials);
     setTasks(restoredTasks);
@@ -2249,6 +2294,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!isAuthorizedTeacher) return;
     deleteFileAttachment(id);
     const removedSubs = submissions.filter((s) => s.taskId === id).map((s) => s.id);
+    removedSubs.forEach((sid) => deleteFileAttachment(sid));
     setTasks((prev) => prev.filter((t) => t.id !== id));
     setSubmissions((prev) => prev.filter((s) => s.taskId !== id));
 
@@ -2265,7 +2311,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     void runDelTask();
   };
 
-  const submitTask = (taskId: string, studentId: string, workText: string, linkAttachment?: string) => {
+  const submitTask = (
+    taskId: string,
+    studentId: string,
+    workText: string,
+    linkAttachment?: string,
+    attachment?: MaterialAttachment | null
+  ) => {
     const student = studentsRoster.find((s) => s.id === studentId);
     const studentName = student ? student.name : 'Siswa';
     const now = new Date();
@@ -2273,6 +2325,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const existingSub = submissions.find((s) => s.taskId === taskId && s.studentId === studentId);
     const subId = existingSub ? existingSub.id : 'sub_' + Date.now();
+    const nextAttachment = attachment || undefined;
+    const resolvedWorkText =
+      workText.trim() ||
+      (nextAttachment
+        ? `[Lampiran berkas: ${nextAttachment.name}]`
+        : linkAttachment?.trim()
+        ? `[Lampiran tautan: ${linkAttachment.trim()}]`
+        : '-');
+
+    if (nextAttachment?.dataUrl) {
+      void saveFileAttachment(subId, nextAttachment.dataUrl);
+    } else {
+      void deleteFileAttachment(subId);
+    }
 
     setSubmissions((prev) => {
       const existingIndex = prev.findIndex((s) => s.taskId === taskId && s.studentId === studentId);
@@ -2281,8 +2347,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updated[existingIndex] = {
           ...updated[existingIndex],
           submittedAt: formattedDate,
-          workText,
-          linkAttachment,
+          workText: resolvedWorkText,
+          linkAttachment: linkAttachment?.trim() || undefined,
+          attachment: nextAttachment,
         };
         return updated;
       }
@@ -2292,8 +2359,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         studentId,
         studentName,
         submittedAt: formattedDate,
-        workText,
-        linkAttachment,
+        workText: resolvedWorkText,
+        linkAttachment: linkAttachment?.trim() || undefined,
+        attachment: nextAttachment,
       };
       return [newSub, ...prev];
     });
@@ -2304,11 +2372,31 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (canUpdateExisting) {
         const updatePayload: Record<string, unknown> = {
           submittedAt: clampStr(formattedDate, 40),
-          workText: clampStr(workText, 20000),
+          workText: clampStr(resolvedWorkText, 20000),
           updatedAt: serverTimestamp(),
         };
-        if (linkAttachment) {
-          updatePayload.linkAttachment = clampStr(linkAttachment, 500);
+        if (linkAttachment?.trim()) {
+          updatePayload.linkAttachment = clampStr(linkAttachment.trim(), 500);
+        } else if (existingSub.linkAttachment) {
+          updatePayload.linkAttachment = deleteField();
+        }
+        if (nextAttachment) {
+          updatePayload.attachmentName = clampStr(nextAttachment.name, 200);
+          updatePayload.attachmentSize = clampStr(nextAttachment.size, 40);
+          updatePayload.attachmentType = nextAttachment.type;
+          if (
+            nextAttachment.dataUrl &&
+            nextAttachment.dataUrl.length <= MAX_FIRESTORE_ATTACHMENT_CHARS
+          ) {
+            updatePayload.attachmentDataUrl = nextAttachment.dataUrl;
+          } else {
+            updatePayload.attachmentDataUrl = deleteField();
+          }
+        } else if (existingSub.attachment) {
+          updatePayload.attachmentName = deleteField();
+          updatePayload.attachmentSize = deleteField();
+          updatePayload.attachmentType = deleteField();
+          updatePayload.attachmentDataUrl = deleteField();
         }
         void updateDoc(doc(db, 'submissions', existingSub.id), updatePayload).catch((err) =>
           handleFirestoreError(err, OperationType.UPDATE, `submissions/${existingSub.id}`)
@@ -2323,12 +2411,23 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           studentUid: firebaseUser.uid,
           ownerUid: taskOwnerUid,
           submittedAt: clampStr(formattedDate, 40),
-          workText: clampStr(workText, 20000),
+          workText: clampStr(resolvedWorkText, 20000),
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         };
-        if (linkAttachment) {
-          newPayload.linkAttachment = clampStr(linkAttachment, 500);
+        if (linkAttachment?.trim()) {
+          newPayload.linkAttachment = clampStr(linkAttachment.trim(), 500);
+        }
+        if (nextAttachment) {
+          newPayload.attachmentName = clampStr(nextAttachment.name, 200);
+          newPayload.attachmentSize = clampStr(nextAttachment.size, 40);
+          newPayload.attachmentType = nextAttachment.type;
+          if (
+            nextAttachment.dataUrl &&
+            nextAttachment.dataUrl.length <= MAX_FIRESTORE_ATTACHMENT_CHARS
+          ) {
+            newPayload.attachmentDataUrl = nextAttachment.dataUrl;
+          }
         }
         void setDoc(doc(db, 'submissions', subId), newPayload).catch((err) =>
           handleFirestoreError(err, OperationType.CREATE, `submissions/${subId}`)
@@ -2521,6 +2620,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       materialIds.forEach((id) => deleteFileAttachment(id));
       taskIds.forEach((id) => deleteFileAttachment(id));
+      submissionIds.forEach((id) => deleteFileAttachment(id));
 
       cloudIdsRef.current.classes = new Set();
       cloudIdsRef.current.students = new Set();

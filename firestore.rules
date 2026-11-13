@@ -122,7 +122,7 @@ service cloud.firestore {
         && (!('linkUrl' in data) || (data.linkUrl is string && data.linkUrl.size() <= 500))
         && (!('attachmentName' in data) || (data.attachmentName is string && data.attachmentName.size() <= 200))
         && (!('attachmentSize' in data) || (data.attachmentSize is string && data.attachmentSize.size() <= 40))
-        && (!('attachmentType' in data) || data.attachmentType in ['pdf', 'word', 'excel', 'other'])
+        && (!('attachmentType' in data) || data.attachmentType in ['pdf', 'word', 'excel', 'image', 'other'])
         && (!('attachmentDataUrl' in data) || (data.attachmentDataUrl is string && data.attachmentDataUrl.size() <= 750000))
         && isValidId(data.classId)
         && data.date is string && data.date.size() <= 30
@@ -147,7 +147,7 @@ service cloud.firestore {
         && data.createdAtStr is string && data.createdAtStr.size() <= 30
         && (!('attachmentName' in data) || (data.attachmentName is string && data.attachmentName.size() <= 200))
         && (!('attachmentSize' in data) || (data.attachmentSize is string && data.attachmentSize.size() <= 40))
-        && (!('attachmentType' in data) || data.attachmentType in ['pdf', 'word', 'excel', 'other'])
+        && (!('attachmentType' in data) || data.attachmentType in ['pdf', 'word', 'excel', 'image', 'other'])
         && (!('attachmentDataUrl' in data) || (data.attachmentDataUrl is string && data.attachmentDataUrl.size() <= 750000))
         && data.visibility == 'classroom'
         && isValidId(data.ownerUid)
@@ -159,8 +159,9 @@ service cloud.firestore {
       return data.keys().hasAll(['taskId', 'studentId', 'studentName', 'studentUid', 'ownerUid', 'submittedAt', 'workText', 'createdAt', 'updatedAt'])
         && data.keys().hasOnly([
           'taskId', 'studentId', 'studentName', 'studentUid', 'ownerUid',
-          'submittedAt', 'workText', 'linkAttachment', 'score', 'note',
-          'createdAt', 'updatedAt'
+          'submittedAt', 'workText', 'linkAttachment',
+          'attachmentName', 'attachmentSize', 'attachmentType', 'attachmentDataUrl',
+          'score', 'note', 'createdAt', 'updatedAt'
         ])
         && isValidId(data.taskId)
         && isValidId(data.studentId)
@@ -170,6 +171,10 @@ service cloud.firestore {
         && data.submittedAt is string && data.submittedAt.size() <= 40
         && data.workText is string && data.workText.size() >= 1 && data.workText.size() <= 20000
         && (!('linkAttachment' in data) || (data.linkAttachment is string && data.linkAttachment.size() <= 500))
+        && (!('attachmentName' in data) || (data.attachmentName is string && data.attachmentName.size() <= 200))
+        && (!('attachmentSize' in data) || (data.attachmentSize is string && data.attachmentSize.size() <= 40))
+        && (!('attachmentType' in data) || data.attachmentType in ['pdf', 'word', 'excel', 'image', 'other'])
+        && (!('attachmentDataUrl' in data) || (data.attachmentDataUrl is string && data.attachmentDataUrl.size() <= 750000))
         && (!('score' in data) || ((data.score is int || data.score is float) && data.score >= 0 && data.score <= 100))
         && (!('note' in data) || (data.note is string && data.note.size() <= 1000))
         && data.createdAt is timestamp
@@ -402,7 +407,11 @@ service cloud.firestore {
           (isAdmin() && diffKeys().hasOnly(['score', 'note', 'updatedAt']))
           || (isVerified()
             && existing().studentUid == request.auth.uid
-            && diffKeys().hasOnly(['submittedAt', 'workText', 'linkAttachment', 'updatedAt']))
+            && diffKeys().hasOnly([
+              'submittedAt', 'workText', 'linkAttachment',
+              'attachmentName', 'attachmentSize', 'attachmentType', 'attachmentDataUrl',
+              'updatedAt'
+            ]))
         );
       allow delete: if isValidId(submissionId) && isAdmin();
     }

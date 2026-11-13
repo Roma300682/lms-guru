@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLMS } from '../../context/LMSContext';
 import { Submission } from '../../types/lms';
+import { FileAttachmentBadge } from '../FileAttachmentBadge';
 import { X, ExternalLink, Check } from 'lucide-react';
 
 interface GradeModalProps {
@@ -15,6 +16,13 @@ export const GradeModal: React.FC<GradeModalProps> = ({ submission, onClose }) =
     submission?.score !== undefined ? String(submission.score) : '85'
   );
   const [note, setNote] = useState<string>(submission?.note || '');
+
+  useEffect(() => {
+    if (submission) {
+      setScore(submission.score !== undefined ? String(submission.score) : '85');
+      setNote(submission.note || '');
+    }
+  }, [submission?.id, submission?.score, submission?.note]);
 
   if (!submission) return null;
 
@@ -38,8 +46,8 @@ export const GradeModal: React.FC<GradeModalProps> = ({ submission, onClose }) =
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-      <div className="bg-white rounded-xl max-w-lg w-full border border-slate-200 shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+      <div className="bg-white rounded-xl max-w-lg w-full border border-slate-200 shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
           <div>
             <h3 className="text-base font-semibold text-slate-900">
               Penilaian Tugas Siswa
@@ -56,8 +64,8 @@ export const GradeModal: React.FC<GradeModalProps> = ({ submission, onClose }) =
           </button>
         </div>
 
-        <form onSubmit={handleSave} className="p-6 space-y-4">
-          <div className="bg-slate-50 rounded-lg p-3.5 border border-slate-200 text-xs text-slate-700 space-y-2">
+        <form onSubmit={handleSave} className="p-6 space-y-4 overflow-y-auto flex-1">
+          <div className="bg-slate-50 rounded-lg p-3.5 border border-slate-200 text-xs text-slate-700 space-y-2.5">
             <div className="flex items-center justify-between text-slate-500">
               <span>Waktu Pengumpulan:</span>
               <span className="font-mono">{submission.submittedAt}</span>
@@ -68,6 +76,14 @@ export const GradeModal: React.FC<GradeModalProps> = ({ submission, onClose }) =
                 {submission.workText}
               </p>
             </div>
+            {submission.attachment && (
+              <div className="space-y-1">
+                <span className="font-medium text-slate-800 block">
+                  Berkas Tugas yang Diunggah Siswa:
+                </span>
+                <FileAttachmentBadge attachment={submission.attachment} showDownload={true} />
+              </div>
+            )}
             {submission.linkAttachment && (
               <div className="pt-1">
                 <a

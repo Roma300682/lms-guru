@@ -4,7 +4,7 @@ import { AddTaskModal } from '../modals/AddTaskModal';
 import { GradeModal } from '../modals/GradeModal';
 import { FileAttachmentBadge } from '../FileAttachmentBadge';
 import { Submission, WhatsAppPrefill } from '../../types/lms';
-import { Plus, ClipboardList, ChevronDown, ChevronUp, CheckCircle, Clock, Trash2, Edit3, MessageCircle, Bell } from 'lucide-react';
+import { Plus, ClipboardList, ChevronDown, ChevronUp, CheckCircle, Clock, Trash2, Edit3, MessageCircle, Bell, Paperclip, ExternalLink } from 'lucide-react';
 import { getPrimarySubject } from '../../utils/subjects';
 
 interface TugasTabProps {
@@ -225,6 +225,28 @@ export const TugasTab: React.FC<TugasTabProps> = ({ onShareToWhatsApp }) => {
                                 <p className="text-xs text-slate-600 line-clamp-1 italic">
                                   "{sub.workText}"
                                 </p>
+                                {(sub.attachment || sub.linkAttachment) && (
+                                  <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                                    {sub.attachment && (
+                                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
+                                        <Paperclip className="w-3 h-3" />
+                                        <span className="truncate max-w-[180px]">{sub.attachment.name}</span>
+                                        <span className="text-indigo-500">({sub.attachment.size})</span>
+                                      </span>
+                                    )}
+                                    {sub.linkAttachment && (
+                                      <a
+                                        href={sub.linkAttachment}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded hover:bg-sky-100"
+                                      >
+                                        <ExternalLink className="w-3 h-3" />
+                                        <span>Tautan</span>
+                                      </a>
+                                    )}
+                                  </div>
+                                )}
                                 {sub.note && (
                                   <p className="text-xs text-indigo-600">
                                     Catatan guru: {sub.note}

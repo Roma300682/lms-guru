@@ -221,7 +221,7 @@
         },
         "attachmentType": {
           "type": "string",
-          "enum": ["pdf", "word", "excel", "other"]
+          "enum": ["pdf", "word", "excel", "image", "other"]
         },
         "attachmentDataUrl": {
           "type": "string",
@@ -299,7 +299,7 @@
         },
         "attachmentType": {
           "type": "string",
-          "enum": ["pdf", "word", "excel", "other"]
+          "enum": ["pdf", "word", "excel", "image", "other"]
         },
         "attachmentDataUrl": {
           "type": "string",
@@ -371,6 +371,22 @@
         "linkAttachment": {
           "type": "string",
           "maxLength": 500
+        },
+        "attachmentName": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "attachmentSize": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "attachmentType": {
+          "type": "string",
+          "enum": ["pdf", "word", "excel", "image", "other"]
+        },
+        "attachmentDataUrl": {
+          "type": "string",
+          "maxLength": 750000
         },
         "score": {
           "type": "number"

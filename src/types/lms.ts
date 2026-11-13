@@ -13,7 +13,7 @@ export interface ClassRoom {
   whatsappGroupUrl?: string; // Link undangan Grup WhatsApp kelas (opsional)
 }
 
-export type MaterialFileType = 'pdf' | 'word' | 'excel' | 'other';
+export type MaterialFileType = 'pdf' | 'word' | 'excel' | 'image' | 'other';
 
 export interface MaterialAttachment {
   name: string;
@@ -41,6 +41,7 @@ export interface Submission {
   submittedAt: string;
   workText: string;
   linkAttachment?: string;
+  attachment?: MaterialAttachment;
   score?: number;
   note?: string;
 }

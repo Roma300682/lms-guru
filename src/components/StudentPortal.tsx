@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLMS } from '../context/LMSContext';
-import { BookOpen, ClipboardList, Award, ExternalLink, Send, CheckCircle, Clock, MessageCircle, Check, Edit2, AlertCircle, Cloud, Loader2 } from 'lucide-react';
-import { FileAttachmentBadge } from './FileAttachmentBadge';
+import { BookOpen, ClipboardList, Award, ExternalLink, Send, CheckCircle, Clock, MessageCircle, Check, Edit2, AlertCircle, Cloud, Loader2, UploadCloud } from 'lucide-react';
+import { FileAttachmentBadge, readFileAsAttachment } from './FileAttachmentBadge';
+import { MaterialAttachment } from '../types/lms';
 import { normalizeWhatsAppNumber } from '../utils/whatsapp';
 import { parseSubjects, getPrimarySubject } from '../utils/subjects';
 
@@ -86,6 +87,12 @@ export const StudentPortal: React.FC = () => {
   const [submittingTaskId, setSubmittingTaskId] = useState<string | null>(null);
   const [workText, setWorkText] = useState('');
   const [linkAttachment, setLinkAttachment] = useState('');
+  const [submissionAttachment, setSubmissionAttachment] = useState<MaterialAttachment | null>(null);
+  const [submissionFileError, setSubmissionFileError] = useState('');
+  const [submissionFileWarning, setSubmissionFileWarning] = useState('');
+  const [submissionFormError, setSubmissionFormError] = useState('');
+  const [isReadingFile, setIsReadingFile] = useState(false);
+  const submissionFileInputRef = useRef<HTMLInputElement>(null);
 
   // Student self-service WhatsApp number editing
   const [isEditingWa, setIsEditingWa] = useState(false);
@@ -119,16 +126,74 @@ export const StudentPortal: React.FC = () => {
     const existing = submissions.find((s) => s.taskId === taskId && s.studentId === student?.id);
     setWorkText(existing ? existing.workText : '');
     setLinkAttachment(existing?.linkAttachment || '');
+    setSubmissionAttachment(existing?.attachment || null);
+    setSubmissionFileError('');
+    setSubmissionFileWarning('');
+    setSubmissionFormError('');
+  };
+
+  const handleSubmissionFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setSubmissionFileError('');
+    setSubmissionFileWarning('');
+    setSubmissionFormError('');
+
+    const MAX_SIZE = 5 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      setSubmissionFileError('Ukuran berkas maksimal 5 MB.');
+      if (submissionFileInputRef.current) submissionFileInputRef.current.value = '';
+      return;
+    }
+
+    setIsReadingFile(true);
+    try {
+      const att = await readFileAsAttachment(file);
+      setSubmissionAttachment(att);
+      if (att.dataUrl.length > 740000) {
+        setSubmissionFileWarning(
+          'Ukuran dokumen melebihi ~500 KB: berkas tersimpan di perangkat ini. Untuk sinkronisasi Cloud otomatis ke guru, gunakan foto, dokumen ≤ 500 KB, atau tautan Google Drive.'
+        );
+      }
+    } catch (err) {
+      setSubmissionFileError(
+        err instanceof Error ? err.message : 'Gagal memproses berkas tugas. Silakan coba lagi.'
+      );
+    } finally {
+      setIsReadingFile(false);
+    }
+  };
+
+  const handleRemoveSubmissionAttachment = () => {
+    setSubmissionAttachment(null);
+    setSubmissionFileError('');
+    setSubmissionFileWarning('');
+    if (submissionFileInputRef.current) submissionFileInputRef.current.value = '';
   };
 
   const handleSendSubmission = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!submittingTaskId || !student || !workText.trim()) return;
+    if (!submittingTaskId || !student) return;
+    if (!workText.trim() && !submissionAttachment && !linkAttachment.trim()) {
+      setSubmissionFormError('Tuliskan jawaban, upload file tugas, atau sertakan tautan sebelum mengirim.');
+      return;
+    }
 
-    submitTask(submittingTaskId, student.id, workText.trim(), linkAttachment.trim() || undefined);
+    submitTask(
+      submittingTaskId,
+      student.id,
+      workText.trim(),
+      linkAttachment.trim() || undefined,
+      submissionAttachment
+    );
     setSubmittingTaskId(null);
     setWorkText('');
     setLinkAttachment('');
+    setSubmissionAttachment(null);
+    setSubmissionFileError('');
+    setSubmissionFileWarning('');
+    setSubmissionFormError('');
   };
 
   return (
@@ -528,7 +593,7 @@ export const StudentPortal: React.FC = () => {
 
                   {/* Submission detail if exists */}
                   {mySubmission && !isSubmitting && (
-                    <div className="bg-indigo-50/50 p-3.5 rounded-lg border border-indigo-100 space-y-2 text-xs">
+                    <div className="bg-indigo-50/50 p-3.5 rounded-lg border border-indigo-100 space-y-2.5 text-xs">
                       <div className="flex items-center justify-between text-slate-500">
                         <span>Pekerjaan Anda dikirim pada:</span>
                         <span className="font-mono">{mySubmission.submittedAt}</span>
@@ -539,6 +604,14 @@ export const StudentPortal: React.FC = () => {
                           {mySubmission.workText}
                         </p>
                       </div>
+                      {mySubmission.attachment && (
+                        <div className="space-y-1">
+                          <span className="font-medium text-slate-800 block">
+                            Berkas Tugas yang Anda Upload:
+                          </span>
+                          <FileAttachmentBadge attachment={mySubmission.attachment} showDownload={true} />
+                        </div>
+                      )}
                       {mySubmission.linkAttachment && (
                         <div>
                           <a
@@ -567,50 +640,126 @@ export const StudentPortal: React.FC = () => {
                         onClick={() => handleOpenSubmit(task.id)}
                         className="inline-flex items-center gap-1.5 text-xs font-semibold px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-xs transition-colors"
                       >
-                        <Send className="w-3.5 h-3.5" />
-                        <span>{mySubmission ? 'Ubah Jawaban Saya' : 'Kumpulkan Tugas'}</span>
+                        <UploadCloud className="w-3.5 h-3.5" />
+                        <span>{mySubmission ? 'Ubah Jawaban / Upload Ulang' : 'Upload & Kumpulkan Tugas'}</span>
                       </button>
                     </div>
                   ) : (
                     /* Submission Form */
-                    <form onSubmit={handleSendSubmission} className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
+                    <form onSubmit={handleSendSubmission} className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3.5">
                       <h4 className="text-xs font-semibold text-slate-800">
-                        {mySubmission ? 'Ubah Pengumpulan Tugas' : 'Form Pengumpulan Tugas'}
+                        {mySubmission ? 'Ubah Pengumpulan & Upload Tugas' : 'Form Upload & Pengumpulan Tugas'}
                       </h4>
+
+                      {/* Upload Berkas Tugas (Foto / PDF / Word / Excel) */}
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-medium text-slate-700">
+                          Upload File Tugas (Foto Jawaban, PDF, Word, atau Excel)
+                        </label>
+
+                        {!submissionAttachment ? (
+                          <div
+                            onClick={() => submissionFileInputRef.current?.click()}
+                            className="border-2 border-dashed border-slate-300 hover:border-indigo-400 hover:bg-indigo-50/40 rounded-xl p-4 text-center cursor-pointer transition-all bg-white"
+                          >
+                            <input
+                              ref={submissionFileInputRef}
+                              type="file"
+                              accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp"
+                              onChange={handleSubmissionFileChange}
+                              className="hidden"
+                            />
+                            <div className="w-9 h-9 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center mx-auto mb-1.5">
+                              {isReadingFile ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <UploadCloud className="w-4 h-4" />
+                              )}
+                            </div>
+                            <div className="text-xs font-semibold text-slate-800">
+                              {isReadingFile ? 'Sedang memproses file...' : 'Klik untuk Pilih / Upload Berkas Tugas'}
+                            </div>
+                            <p className="text-[11px] text-slate-500 mt-0.5">
+                              Mendukung <strong>Foto (.jpg/.png)</strong>, <strong>PDF</strong>, <strong>Word</strong>, &amp; <strong>Excel</strong> (Foto otomatis dikompres agar cepat terkirim)
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            <FileAttachmentBadge
+                              attachment={submissionAttachment}
+                              onRemove={handleRemoveSubmissionAttachment}
+                              showDownload={true}
+                            />
+                            <p className="text-[11px] text-emerald-700 font-medium">
+                              Berkas siap dikirim bersama pengumpulan tugas.
+                            </p>
+                          </div>
+                        )}
+
+                        {submissionFileError && (
+                          <p className="text-[11px] text-rose-600 flex items-center gap-1 bg-rose-50 p-2 rounded-lg border border-rose-200">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                            <span>{submissionFileError}</span>
+                          </p>
+                        )}
+                        {submissionFileWarning && (
+                          <p className="text-[11px] text-amber-800 flex items-start gap-1.5 bg-amber-50 p-2 rounded-lg border border-amber-200">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                            <span>{submissionFileWarning}</span>
+                          </p>
+                        )}
+                      </div>
 
                       <div>
                         <label className="block text-xs font-medium text-slate-700 mb-1">
-                          Tuliskan Jawaban / Hasil Tugas Anda
+                          Jawaban Teks / Catatan untuk Guru{' '}
+                          <span className="text-slate-400 font-normal">
+                            ({submissionAttachment || linkAttachment.trim() ? 'Opsional jika sudah upload file/link' : 'Wajib jika tanpa upload file'})
+                          </span>
                         </label>
                         <textarea
-                          required
-                          rows={4}
+                          rows={3}
                           value={workText}
-                          onChange={(e) => setWorkText(e.target.value)}
-                          placeholder="Ketikkan teks jawaban, rangkuman, atau penjelasan tugas di sini..."
+                          onChange={(e) => {
+                            setWorkText(e.target.value);
+                            setSubmissionFormError('');
+                          }}
+                          placeholder="Ketikkan teks jawaban, ringkasan, atau catatan pengerjaan di sini..."
                           className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                         />
                       </div>
 
                       <div>
                         <label className="block text-xs font-medium text-slate-700 mb-1">
-                          Tautan Dokumen / Google Drive / Foto Tugas (Opsional)
+                          Tautan Dokumen / Google Drive (Opsional)
                         </label>
                         <input
                           type="url"
                           value={linkAttachment}
-                          onChange={(e) => setLinkAttachment(e.target.value)}
+                          onChange={(e) => {
+                            setLinkAttachment(e.target.value);
+                            setSubmissionFormError('');
+                          }}
                           placeholder="https://drive.google.com/..."
                           className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                         />
                       </div>
 
+                      {submissionFormError && (
+                        <p className="text-[11px] text-rose-600 flex items-center gap-1 bg-rose-50 p-2 rounded-lg border border-rose-200">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span>{submissionFormError}</span>
+                        </p>
+                      )}
+
                       <div className="flex items-center gap-2 pt-1">
                         <button
                           type="submit"
-                          className="px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-xs transition-colors"
+                          disabled={isReadingFile}
+                          className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg shadow-xs transition-colors"
                         >
-                          Kirim Sekarang
+                          <Send className="w-3.5 h-3.5" />
+                          <span>{submissionAttachment ? 'Upload & Kirim Tugas' : 'Kirim Sekarang'}</span>
                         </button>
                         <button
                           type="button"
