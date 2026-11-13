@@ -17,6 +17,14 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.email_verified == true;
     }
 
+    function isAnonymousStudent() {
+      return isSignedIn() && request.auth.token.firebase.sign_in_provider == 'anonymous';
+    }
+
+    function isStudentSession() {
+      return isVerified() || isAnonymousStudent();
+    }
+
     function isValidId(id) {
       return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
@@ -229,7 +237,7 @@ service cloud.firestore {
     // 6. Settings (Teacher Public & Private)
     match /settings/{docId} {
       allow get: if isValidId(docId) && (
-        (docId == 'teacherPublic' && isVerified())
+        (docId == 'teacherPublic' && isStudentSession())
         || (docId == 'teacherPrivate' && isAdmin())
       );
       allow list: if isBootstrapAdmin();
@@ -246,8 +254,8 @@ service cloud.firestore {
 
     // 7. Classes
     match /classes/{classId} {
-      allow get: if isValidId(classId) && isVerified();
-      allow list: if isVerified() && existing().visibility == 'classroom';
+      allow get: if isValidId(classId) && isStudentSession();
+      allow list: if isStudentSession() && existing().visibility == 'classroom';
       allow create: if isValidId(classId) && isAdmin() && isValidClassRoom(incoming())
         && incoming().ownerUid == request.auth.uid
         && incoming().createdAt == request.time
@@ -262,8 +270,8 @@ service cloud.firestore {
 
     // 8. Students Roster & Isolated Private Contact
     match /students/{studentId} {
-      allow get: if isValidId(studentId) && isVerified();
-      allow list: if isVerified() && existing().visibility == 'classroom';
+      allow get: if isValidId(studentId) && isStudentSession();
+      allow list: if isStudentSession() && existing().visibility == 'classroom';
       allow create: if isValidId(studentId) && isAdmin() && isValidStudent(incoming())
         && exists(/databases/$(database)/documents/classes/$(incoming().classId))
         && incoming().ownerUid == request.auth.uid
@@ -277,7 +285,7 @@ service cloud.firestore {
           (isAdmin()
             && exists(/databases/$(database)/documents/classes/$(incoming().classId))
             && diffKeys().hasOnly(['name', 'classId', 'claimedByUid', 'visibility', 'updatedAt']))
-          || (isVerified()
+          || (isStudentSession()
             && diffKeys().hasOnly(['claimedByUid', 'updatedAt'])
             && incoming().claimedByUid == request.auth.uid
             && (!('claimedByUid' in existing()) || existing().claimedByUid == '' || existing().claimedByUid == request.auth.uid))
@@ -287,22 +295,22 @@ service cloud.firestore {
       match /private/{docId} {
         allow get: if isValidId(studentId) && docId == 'contact' && (
           isAdmin()
-          || (isVerified() && (
+          || (isStudentSession() && (
             (resource != null && existing().studentUid == request.auth.uid)
             || (exists(/databases/$(database)/documents/students/$(studentId))
               && get(/databases/$(database)/documents/students/$(studentId)).data.claimedByUid == request.auth.uid)
           ))
         );
-        allow list: if isVerified() && (
+        allow list: if isStudentSession() && (
           existing().studentUid == request.auth.uid
-          || existing().ownerUid == request.auth.uid
+          || (isVerified() && existing().ownerUid == request.auth.uid)
           || isBootstrapAdmin()
         );
         allow create: if isValidId(studentId) && docId == 'contact' && isValidStudentContact(incoming())
           && incoming().updatedAt == request.time
           && (
             (isAdmin() && incoming().ownerUid == request.auth.uid)
-            || (isVerified()
+            || (isStudentSession()
               && incoming().studentUid == request.auth.uid
               && exists(/databases/$(database)/documents/students/$(studentId))
               && get(/databases/$(database)/documents/students/$(studentId)).data.claimedByUid == request.auth.uid
@@ -313,7 +321,7 @@ service cloud.firestore {
           && incoming().updatedAt == request.time
           && (
             (isAdmin() && diffKeys().hasOnly(['whatsapp', 'studentUid', 'updatedAt']))
-            || (isVerified()
+            || (isStudentSession()
               && diffKeys().hasOnly(['whatsapp', 'studentUid', 'updatedAt'])
               && incoming().studentUid == request.auth.uid
               && exists(/databases/$(database)/documents/students/$(studentId))
@@ -325,17 +333,17 @@ service cloud.firestore {
 
     // Support collectionGroup('private') queries by teacher/admin or claiming student
     match /{path=**}/private/{docId} {
-      allow list: if isVerified() && (
+      allow list: if isStudentSession() && (
         existing().studentUid == request.auth.uid
-        || existing().ownerUid == request.auth.uid
+        || (isVerified() && existing().ownerUid == request.auth.uid)
         || isBootstrapAdmin()
       );
     }
 
     // 9. Materials
     match /materials/{materialId} {
-      allow get: if isValidId(materialId) && isVerified();
-      allow list: if isVerified() && existing().visibility == 'classroom';
+      allow get: if isValidId(materialId) && isStudentSession();
+      allow list: if isStudentSession() && existing().visibility == 'classroom';
       allow create: if isValidId(materialId) && isAdmin() && isValidMaterial(incoming())
         && (incoming().classId == 'all' || exists(/databases/$(database)/documents/classes/$(incoming().classId)))
         && incoming().ownerUid == request.auth.uid
@@ -356,8 +364,8 @@ service cloud.firestore {
 
     // 10. Tasks
     match /tasks/{taskId} {
-      allow get: if isValidId(taskId) && isVerified();
-      allow list: if isVerified() && existing().visibility == 'classroom';
+      allow get: if isValidId(taskId) && isStudentSession();
+      allow list: if isStudentSession() && existing().visibility == 'classroom';
       allow create: if isValidId(taskId) && isAdmin() && isValidTask(incoming())
         && (incoming().classId == 'all' || exists(/databases/$(database)/documents/classes/$(incoming().classId)))
         && incoming().ownerUid == request.auth.uid
@@ -380,14 +388,14 @@ service cloud.firestore {
     match /submissions/{submissionId} {
       allow get: if isValidId(submissionId) && (
         isAdmin()
-        || (isVerified() && existing().studentUid == request.auth.uid)
+        || (isStudentSession() && existing().studentUid == request.auth.uid)
       );
-      allow list: if isVerified() && (
+      allow list: if isStudentSession() && (
         existing().studentUid == request.auth.uid
-        || existing().ownerUid == request.auth.uid
+        || (isVerified() && existing().ownerUid == request.auth.uid)
         || isBootstrapAdmin()
       );
-      allow create: if isValidId(submissionId) && isVerified() && isValidSubmission(incoming())
+      allow create: if isValidId(submissionId) && isStudentSession() && isValidSubmission(incoming())
         && exists(/databases/$(database)/documents/tasks/$(incoming().taskId))
         && exists(/databases/$(database)/documents/students/$(incoming().studentId))
         && incoming().studentUid == request.auth.uid
@@ -405,7 +413,7 @@ service cloud.firestore {
         && incoming().updatedAt == request.time
         && (
           (isAdmin() && diffKeys().hasOnly(['score', 'note', 'updatedAt']))
-          || (isVerified()
+          || (isStudentSession()
             && existing().studentUid == request.auth.uid
             && diffKeys().hasOnly([
               'submittedAt', 'workText', 'linkAttachment',
@@ -418,8 +426,8 @@ service cloud.firestore {
 
     // 12. Attendance Records
     match /attendance/{attendanceId} {
-      allow get: if isValidId(attendanceId) && isVerified();
-      allow list: if isVerified() && existing().visibility == 'classroom';
+      allow get: if isValidId(attendanceId) && isStudentSession();
+      allow list: if isStudentSession() && existing().visibility == 'classroom';
       allow create: if isValidId(attendanceId) && isAdmin() && isValidAttendance(incoming())
         && exists(/databases/$(database)/documents/classes/$(incoming().classId))
         && incoming().ownerUid == request.auth.uid

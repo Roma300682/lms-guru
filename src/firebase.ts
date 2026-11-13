@@ -4,6 +4,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
+  signInAnonymously,
   getRedirectResult,
   signOut,
   User,
@@ -112,6 +113,11 @@ export async function signInWithGoogleRedirect(): Promise<void> {
 export async function resolveGoogleRedirectResult(): Promise<User | null> {
   const result = await getRedirectResult(auth);
   return result?.user || null;
+}
+
+export async function signInAnonymousStudent(): Promise<User> {
+  const result = await signInAnonymously(auth);
+  return result.user;
 }
 
 export async function signOutFirebase(): Promise<void> {

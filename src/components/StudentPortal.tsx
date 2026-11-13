@@ -6,6 +6,8 @@ import { MaterialAttachment } from '../types/lms';
 import { normalizeWhatsAppNumber } from '../utils/whatsapp';
 import { parseSubjects, getPrimarySubject } from '../utils/subjects';
 
+import firebaseConfig from '../../firebase-applet-config.json';
+
 export const StudentPortal: React.FC = () => {
   const {
     students,
@@ -21,11 +23,15 @@ export const StudentPortal: React.FC = () => {
     submitTask,
     authSession,
     isCloudConnected,
+    isStudentCloudSynced,
+    anonymousAuthBlocked,
+    retryAnonymousSync,
     connectGoogleForStudent,
     cloudAuthError,
     logout,
   } = useLMS();
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
+  const firebaseAuthProvidersUrl = `https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/providers`;
 
   const [activeTab, setActiveTab] = useState<'materi' | 'tugas' | 'rekap'>('materi');
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
@@ -199,39 +205,85 @@ export const StudentPortal: React.FC = () => {
   return (
     <div className="space-y-6">
       {authSession?.role === 'student' && !isCloudConnected && (
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2 text-xs text-slate-700">
+        <div
+          className={`border rounded-xl p-3.5 space-y-2 text-xs ${
+            isStudentCloudSynced
+              ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
+              : anonymousAuthBlocked
+              ? 'bg-amber-50 border-amber-200 text-amber-900'
+              : 'bg-slate-50 border-slate-200 text-slate-700'
+          }`}
+        >
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
             <div className="flex items-start gap-2">
-              <Cloud className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              {anonymousAuthBlocked ? (
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              ) : (
+                <Cloud className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              )}
               <span>
-                <strong>Mode Tanpa Google Aktif:</strong> Anda masuk langsung tanpa akun Google. Hubungkan Google (opsional) kapan saja bila ingin menyinkronkan tugas &amp; nilai ke Cloud Guru.
+                {isStudentCloudSynced ? (
+                  <>
+                    <strong>Sinkron Cloud Aktif (Tanpa Google):</strong> Materi, tugas, dan file yang Anda upload langsung tersinkron otomatis ke Dashboard Guru.
+                  </>
+                ) : anonymousAuthBlocked ? (
+                  <>
+                    <strong>Sinkron Otomatis Menunggu Aktivasi Anonymous Auth:</strong> Guru/Admin perlu mengaktifkan provider <strong>Anonymous</strong> 1x di Firebase Console agar sinkron berjalan tanpa Google.
+                  </>
+                ) : (
+                  <>
+                    <strong>Mode Tanpa Google Aktif:</strong> Anda masuk langsung tanpa akun Google. Hubungkan Google (opsional) kapan saja bila ingin mengikat data ke akun Google.
+                  </>
+                )}
               </span>
             </div>
-            <button
-              type="button"
-              disabled={isConnectingGoogle}
-              onClick={async () => {
-                setIsConnectingGoogle(true);
-                try {
-                  await connectGoogleForStudent();
-                } finally {
-                  setIsConnectingGoogle(false);
-                }
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 disabled:opacity-60 rounded-lg transition-colors shrink-0 self-start sm:self-auto"
-            >
-              {isConnectingGoogle ? (
+            <div className="flex flex-wrap items-center gap-2 shrink-0 self-start sm:self-auto">
+              {anonymousAuthBlocked && (
                 <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Menghubungkan...</span>
-                </>
-              ) : (
-                <>
-                  <Cloud className="w-3.5 h-3.5" />
-                  <span>Hubungkan Google (Opsional)</span>
+                  <a
+                    href={firebaseAuthProvidersUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 font-semibold text-white bg-amber-700 hover:bg-amber-800 rounded-lg transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Aktifkan di Firebase</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => void retryAnonymousSync()}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 font-semibold text-amber-900 bg-white hover:bg-amber-100 border border-amber-300 rounded-lg transition-colors"
+                  >
+                    <span>Coba Lagi</span>
+                  </button>
                 </>
               )}
-            </button>
+              <button
+                type="button"
+                disabled={isConnectingGoogle}
+                onClick={async () => {
+                  setIsConnectingGoogle(true);
+                  try {
+                    await connectGoogleForStudent();
+                  } finally {
+                    setIsConnectingGoogle(false);
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 font-semibold text-emerald-800 bg-white hover:bg-emerald-100 border border-emerald-200 disabled:opacity-60 rounded-lg transition-colors"
+              >
+                {isConnectingGoogle ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Menghubungkan...</span>
+                  </>
+                ) : (
+                  <>
+                    <Cloud className="w-3.5 h-3.5" />
+                    <span>Hubungkan Google (Opsional)</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
           {cloudAuthError && (
             <p className="text-[11px] text-rose-600 flex items-center gap-1">

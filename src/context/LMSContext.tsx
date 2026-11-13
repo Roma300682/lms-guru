@@ -23,6 +23,7 @@ import {
   handleFirestoreError,
   signInWithGooglePopup,
   signInWithGoogleRedirect,
+  signInAnonymousStudent,
   resolveGoogleRedirectResult,
   isEmbeddedInIframe,
   signOutFirebase,
@@ -78,6 +79,10 @@ interface LMSContextType {
   authLoading: boolean;
   isCloudAdmin: boolean;
   isCloudConnected: boolean;
+  isStudentCloudSynced: boolean;
+  anonymousAuthBlocked: boolean;
+  anonymousAuthError: string | null;
+  retryAnonymousSync: () => Promise<boolean>;
   isInIframe: boolean;
   cloudAuthError: string | null;
   cloudAuthErrorCode: string | null;
@@ -224,9 +229,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Firebase Auth state
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [redirectCheckDone, setRedirectCheckDone] = useState<boolean>(false);
   const [isCloudAdmin, setIsCloudAdmin] = useState<boolean>(false);
   const [cloudAuthError, setCloudAuthError] = useState<string | null>(null);
   const [cloudAuthErrorCode, setCloudAuthErrorCode] = useState<string | null>(null);
+  const [anonymousAuthBlocked, setAnonymousAuthBlocked] = useState<boolean>(false);
+  const [anonymousAuthError, setAnonymousAuthError] = useState<string | null>(null);
+  const anonAttemptInFlightRef = useRef<boolean>(false);
 
   // Track Firestore document ownership & student claim metadata
   const teacherOwnerUidRef = useRef<string>('');
@@ -283,6 +292,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const isCloudConnected = Boolean(firebaseUser && firebaseUser.emailVerified);
+  const canAccessStudentCloud = Boolean(
+    firebaseUser && (firebaseUser.emailVerified || firebaseUser.isAnonymous)
+  );
+  const isStudentCloudSynced = canAccessStudentCloud;
 
   // Multi-subject helpers: configured teacher subjects + any free subject attached to materials/tasks/attendance/questionSets
   const teacherSubjects: string[] = React.useMemo(
@@ -378,6 +391,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (code && code !== 'auth/popup-closed-by-user') {
           setCloudAuthError(`Gagal menyelesaikan login Google (${code}: ${msg}).`);
         }
+      })
+      .finally(() => {
+        if (active) setRedirectCheckDone(true);
       });
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -410,6 +426,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
       setFirebaseUser(user);
+      if (user && (user.emailVerified || user.isAnonymous)) {
+        setAnonymousAuthBlocked(false);
+        setAnonymousAuthError(null);
+      }
+
       if (user && user.emailVerified) {
         try {
           const adminFlag = await checkUserAdminStatus(user);
@@ -433,19 +454,21 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsCloudAdmin(false);
         setAuthSession((prev) => (prev?.role === 'student' ? prev : null));
         setViewModeState('student');
-        hasSeededCloudRef.current = false;
-        cloudIdsRef.current = {
-          hasTeacherPublic: false,
-          hasTeacherPrivate: false,
-          classes: new Set(),
-          students: new Set(),
-          contacts: new Set(),
-          materials: new Set(),
-          tasks: new Set(),
-          attendance: new Set(),
-          questionSets: new Set(),
-          submissions: new Set(),
-        };
+        if (!user) {
+          hasSeededCloudRef.current = false;
+          cloudIdsRef.current = {
+            hasTeacherPublic: false,
+            hasTeacherPrivate: false,
+            classes: new Set(),
+            students: new Set(),
+            contacts: new Set(),
+            materials: new Set(),
+            tasks: new Set(),
+            attendance: new Set(),
+            questionSets: new Set(),
+            submissions: new Set(),
+          };
+        }
       }
       setAuthLoading(false);
     });
@@ -455,6 +478,60 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubscribe();
     };
   }, [checkUserAdminStatus]);
+
+  // Ensure student browsers automatically get a Firebase Anonymous session so Cloud sync works without Google
+  const ensureAnonymousStudentSession = useCallback(async (force = false): Promise<boolean> => {
+    if (auth.currentUser) {
+      setAnonymousAuthBlocked(false);
+      setAnonymousAuthError(null);
+      return true;
+    }
+    if (anonAttemptInFlightRef.current && !force) return false;
+    anonAttemptInFlightRef.current = true;
+    try {
+      await signInAnonymousStudent();
+      setAnonymousAuthBlocked(false);
+      setAnonymousAuthError(null);
+      return true;
+    } catch (err) {
+      const code = (err as { code?: string })?.code || '';
+      const msg = err instanceof Error ? err.message : String(err);
+      if (
+        code === 'auth/operation-not-allowed' ||
+        code === 'auth/admin-restricted-operation'
+      ) {
+        setAnonymousAuthBlocked(true);
+        setAnonymousAuthError(
+          `Sinkronisasi otomatis tanpa Google belum diaktifkan di Firebase Console (${code}).`
+        );
+      } else {
+        setAnonymousAuthError(
+          `Gagal menyambungkan sesi siswa ke Cloud (${code || msg}).`
+        );
+      }
+      return false;
+    } finally {
+      anonAttemptInFlightRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!authLoading && redirectCheckDone && !firebaseUser && !anonymousAuthBlocked) {
+      void ensureAnonymousStudentSession();
+    }
+  }, [
+    authLoading,
+    redirectCheckDone,
+    firebaseUser,
+    anonymousAuthBlocked,
+    ensureAnonymousStudentSession,
+  ]);
+
+  const retryAnonymousSync = useCallback(async (): Promise<boolean> => {
+    setAnonymousAuthBlocked(false);
+    setAnonymousAuthError(null);
+    return ensureAnonymousStudentSession(true);
+  }, [ensureAnonymousStudentSession]);
 
   // Continuous fail-closed enforcement: students can never hold teacher viewMode or teacher session
   const setViewMode = useCallback(
@@ -898,9 +975,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [firebaseUser, isCloudAdmin, seedCloudDatabaseIfEmpty]);
 
-  // Real-time Firestore subscriptions for classroom entities when authenticated
+  // Real-time Firestore subscriptions for classroom entities when authenticated (verified Google or anonymous student)
   useEffect(() => {
-    if (!firebaseUser || !firebaseUser.emailVerified) return;
+    if (!canAccessStudentCloud || !firebaseUser) return;
 
     const unsubscribers: Array<() => void> = [];
 
@@ -1221,11 +1298,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => {
       unsubscribers.forEach((unsub) => unsub());
     };
-  }, [firebaseUser, isCloudAdmin]);
+  }, [firebaseUser, isCloudAdmin, canAccessStudentCloud]);
 
   // Isolated Private WhatsApp Contacts Listener (per student doc to avoid unindexed collectionGroup errors)
   useEffect(() => {
-    if (!firebaseUser || !firebaseUser.emailVerified) {
+    if (!canAccessStudentCloud || !firebaseUser) {
       setStudentContacts({});
       return;
     }
@@ -1263,7 +1340,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => {
       unsubs.forEach((unsub) => unsub());
     };
-  }, [firebaseUser, isCloudAdmin, studentsRoster, authSession?.role, currentStudentId]);
+  }, [firebaseUser, isCloudAdmin, canAccessStudentCloud, studentsRoster, authSession?.role, currentStudentId]);
 
   const handleGoogleAuthFailure = async (
     err: unknown,
@@ -1392,15 +1469,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const syncStudentClaimAndWa = async (studentId: string, cleanWa?: string) => {
-    if (!firebaseUser || !firebaseUser.emailVerified) return;
+    if (!canAccessStudentCloud || !firebaseUser) return;
 
     const existingOwner =
       studentOwnerMapRef.current[studentId] || teacherOwnerUidRef.current || firebaseUser.uid;
     const claimedBy = studentClaimedMapRef.current[studentId];
     let canWriteContact = isCloudAdmin || claimedBy === firebaseUser.uid;
 
-    // Claim student record for this authenticated student account if not yet claimed
-    if (!isCloudAdmin && (!claimedBy || claimedBy === firebaseUser.uid)) {
+    // Claim student record for this authenticated student session if not yet claimed
+    if (!isCloudAdmin && !claimedBy) {
       try {
         await updateDoc(doc(db, 'students', studentId), {
           claimedByUid: firebaseUser.uid,
@@ -1451,19 +1528,21 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setActiveClassId(targetStudent.classId);
     }
 
-    if (firebaseUser && firebaseUser.emailVerified) {
+    if (canAccessStudentCloud) {
       void syncStudentClaimAndWa(studentId, cleanWa);
     }
   };
 
-  // If a non-Google student later connects Google optionally inside StudentPortal, sync their claim & WA
+  // When a student session becomes synced (anonymous or optional Google), sync their claim & WA
   useEffect(() => {
-    if (firebaseUser && firebaseUser.emailVerified && authSession?.role === 'student' && currentStudentId) {
-      const localWa = studentContacts[currentStudentId] || studentsRoster.find((s) => s.id === currentStudentId)?.whatsapp;
+    if (canAccessStudentCloud && authSession?.role === 'student' && currentStudentId) {
+      const localWa =
+        studentContacts[currentStudentId] ||
+        studentsRoster.find((s) => s.id === currentStudentId)?.whatsapp;
       void syncStudentClaimAndWa(currentStudentId, localWa);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firebaseUser?.uid, authSession?.role, currentStudentId]);
+  }, [firebaseUser?.uid, canAccessStudentCloud, authSession?.role, currentStudentId]);
 
   const logout = () => {
     setAuthSession(null);
@@ -1471,7 +1550,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsCloudAdmin(false);
     localStorage.removeItem('gm_cloud_uid');
     localStorage.removeItem('gm_student_session');
-    if (firebaseUser) {
+    // Only sign out of Google sessions; keep anonymous session intact so browser retains Cloud sync & submission ownership
+    if (firebaseUser && !firebaseUser.isAnonymous) {
       void signOutFirebase();
     }
   };
@@ -1518,7 +1598,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Self-heal: ensure all students belong to an existing class (local mode only; Firestore is authoritative in cloud mode)
   useEffect(() => {
-    if (isCloudConnected) return;
+    if (canAccessStudentCloud) return;
     if (classes.length > 0) {
       const validClassIds = new Set(classes.map((c) => c.id));
       setStudentsRoster((prev) => {
@@ -1533,7 +1613,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return changed ? updated : prev;
       });
     }
-  }, [classes, isCloudConnected]);
+  }, [classes, canAccessStudentCloud]);
 
   // Materials persistence with IndexedDB fallback
   useEffect(() => {
@@ -1837,13 +1917,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         );
       }
     } else if (authSession?.role === 'student' && id === currentStudentId && patch.whatsapp !== undefined) {
-      // Student self-service WhatsApp update (works both without Google and with Google Cloud sync)
+      // Student self-service WhatsApp update (syncs automatically via Anonymous Auth or Google Cloud sync)
       const cleanWa = patch.whatsapp.trim();
       setStudentsRoster((prev) =>
         prev.map((s) => (s.id === id ? { ...s, whatsapp: cleanWa } : s))
       );
       setStudentContacts((prev) => ({ ...prev, [id]: cleanWa }));
-      if (firebaseUser && firebaseUser.emailVerified) {
+      if (canAccessStudentCloud) {
         void syncStudentClaimAndWa(id, cleanWa);
       }
     }
@@ -2324,7 +2404,16 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const formattedDate = `${now.toISOString().split('T')[0]} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
     const existingSub = submissions.find((s) => s.taskId === taskId && s.studentId === studentId);
-    const subId = existingSub ? existingSub.id : 'sub_' + Date.now();
+    const canUpdateExisting = Boolean(
+      canAccessStudentCloud &&
+      firebaseUser &&
+      existingSub &&
+      submissionStudentUidMapRef.current[existingSub.id] === firebaseUser.uid
+    );
+    const subId =
+      existingSub && (!canAccessStudentCloud || canUpdateExisting)
+        ? existingSub.id
+        : 'sub_' + Date.now();
     const nextAttachment = attachment || undefined;
     const resolvedWorkText =
       workText.trim() ||
@@ -2346,6 +2435,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const updated = [...prev];
         updated[existingIndex] = {
           ...updated[existingIndex],
+          id: subId,
           submittedAt: formattedDate,
           workText: resolvedWorkText,
           linkAttachment: linkAttachment?.trim() || undefined,
@@ -2366,10 +2456,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return [newSub, ...prev];
     });
 
-    if (firebaseUser && firebaseUser.emailVerified) {
-      const canUpdateExisting =
-        existingSub && submissionStudentUidMapRef.current[existingSub.id] === firebaseUser.uid;
-      if (canUpdateExisting) {
+    if (canAccessStudentCloud && firebaseUser) {
+      if (canUpdateExisting && existingSub) {
         const updatePayload: Record<string, unknown> = {
           submittedAt: clampStr(formattedDate, 40),
           workText: clampStr(resolvedWorkText, 20000),
@@ -2694,6 +2782,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         authLoading,
         isCloudAdmin,
         isCloudConnected,
+        isStudentCloudSynced,
+        anonymousAuthBlocked,
+        anonymousAuthError,
+        retryAnonymousSync,
         isInIframe,
         cloudAuthError,
         cloudAuthErrorCode,

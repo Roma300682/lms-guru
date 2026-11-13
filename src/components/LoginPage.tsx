@@ -15,6 +15,9 @@ export const LoginPage: React.FC = () => {
     loginAsStudent,
     firebaseUser,
     isCloudConnected,
+    isStudentCloudSynced,
+    anonymousAuthBlocked,
+    retryAnonymousSync,
     isCloudAdmin,
     isInIframe,
     cloudAuthError,
@@ -26,6 +29,7 @@ export const LoginPage: React.FC = () => {
 
   const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
   const firebaseAuthSettingsUrl = `https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`;
+  const firebaseAuthProvidersUrl = `https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/providers`;
 
   const handleCopyHost = () => {
     if (!currentHost) return;
@@ -122,7 +126,7 @@ export const LoginPage: React.FC = () => {
     ? selectedStudentId
     : classStudents[0]?.id || '';
 
-  // Keep draft WA intact when Cloud data syncs after Google login
+  // Keep draft WA intact when Cloud data syncs
   useEffect(() => {
     if (!hasEditedWaRef.current && effectiveStudentId) {
       const found = students.find((s) => s.id === effectiveStudentId);
@@ -130,7 +134,7 @@ export const LoginPage: React.FC = () => {
         setStudentWhatsapp(found.whatsapp);
       }
     }
-  }, [isCloudConnected, students, effectiveStudentId]);
+  }, [isCloudConnected, isStudentCloudSynced, students, effectiveStudentId]);
 
   const syncStudentWhatsapp = (studentId: string, nextClassId = effectiveClassId) => {
     const found = students.find((s) => s.id === studentId);
@@ -402,7 +406,7 @@ export const LoginPage: React.FC = () => {
               {isCloudConnected ? (
                 <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 flex items-center justify-between gap-2">
                   <span className="truncate font-medium">
-                    Terhubung Cloud: {firebaseUser?.email}
+                    Terhubung Google Cloud: {firebaseUser?.email}
                   </span>
                   <button
                     type="button"
@@ -411,6 +415,44 @@ export const LoginPage: React.FC = () => {
                   >
                     Ganti Akun
                   </button>
+                </div>
+              ) : isStudentCloudSynced ? (
+                <div className="p-3 rounded-xl bg-emerald-50/80 border border-emerald-200 text-[11px] text-emerald-900 space-y-1 leading-relaxed">
+                  <span className="font-bold text-emerald-950 flex items-center gap-1.5">
+                    <Cloud className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>Sinkron Cloud Otomatis Aktif (Tanpa Google)</span>
+                  </span>
+                  <span>
+                    Daftar kelas, nama siswa, materi, dan upload tugas langsung tersinkron ke Dashboard Guru tanpa perlu login Google.
+                  </span>
+                </div>
+              ) : anonymousAuthBlocked ? (
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 space-y-2 leading-relaxed">
+                  <div className="font-bold text-amber-950 flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    <span>Sinkron Otomatis Menunggu Aktivasi 1x di Firebase</span>
+                  </div>
+                  <p>
+                    Agar siswa di browser mana pun langsung tersinkron tanpa login Google, Admin perlu mengaktifkan provider <strong>Anonymous</strong> di Firebase Console (Authentication → Sign-in method → Anonymous → Enable).
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <a
+                      href={firebaseAuthProvidersUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-white bg-amber-700 hover:bg-amber-800 rounded-lg transition-colors"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      <span>Buka Sign-in Method Firebase</span>
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => void retryAnonymousSync()}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-amber-900 bg-white hover:bg-amber-100 border border-amber-300 rounded-lg transition-colors"
+                    >
+                      <span>Coba Sinkron Lagi</span>
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200 text-[11px] text-emerald-900 space-y-1 leading-relaxed">
@@ -427,9 +469,9 @@ export const LoginPage: React.FC = () => {
                 {classes.length === 0 ? (
                   <div className="bg-amber-50 border border-amber-200 text-amber-800 p-3.5 rounded-xl text-xs">
                     <span className="font-semibold block mb-1">Belum Ada Kelas Terdaftar</span>
-                    {isCloudConnected
+                    {isStudentCloudSynced
                       ? 'Guru belum menambahkan rombel kelas atau mengunggah data siswa ke Database Cloud.'
-                      : 'Daftar kelas belum tersedia di browser ini. Hubungkan Google di bawah jika guru membagikan data lewat Cloud.'}
+                      : 'Daftar kelas belum tersedia di browser ini. Aktifkan sinkron otomatis atau hubungkan Google di bawah jika guru membagikan data lewat Cloud.'}
                   </div>
                 ) : (
                   <>
@@ -585,8 +627,10 @@ export const LoginPage: React.FC = () => {
                 {!isCloudConnected && (
                   <div className="pt-2 border-t border-slate-100 space-y-2">
                     <div className="text-[11px] text-slate-500 leading-relaxed">
-                      <span className="font-semibold text-slate-700">Sinkron Cloud Guru (Opsional):</span>{' '}
-                      Tidak wajib. Hubungkan Google hanya jika ingin mengambil daftar kelas/materi terbaru dari HP lain atau mengirim tugas langsung ke Dashboard Guru.
+                      <span className="font-semibold text-slate-700">Akun Google Siswa (Opsional):</span>{' '}
+                      {isStudentCloudSynced
+                        ? 'Sinkronisasi ke Cloud Guru sudah berjalan otomatis. Hubungkan Google hanya jika ingin mengikat riwayat nilai permanen saat berpindah HP.'
+                        : 'Tidak wajib. Hubungkan Google hanya jika ingin mengambil daftar kelas/materi terbaru dari HP lain atau mengirim tugas langsung ke Dashboard Guru.'}
                     </div>
 
                     <div className="flex flex-col sm:flex-row gap-2">
