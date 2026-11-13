@@ -2,13 +2,17 @@ import React, { useState } from 'react';
 import { useLMS } from '../../context/LMSContext';
 import { AttendanceModal } from '../modals/AttendanceModal';
 import { Download, Printer, UserCheck, Calendar, Trash2, CheckCircle, AlertCircle, Plus } from 'lucide-react';
+import { getPrimarySubject } from '../../utils/subjects';
 
 export const RekapTab: React.FC = () => {
-  const { students, tasks, submissions, attendance, deleteAttendance, activeClassId, classes, teacher } = useLMS();
+  const { students, tasks, submissions, attendance, deleteAttendance, activeClassId, activeSubject, classes, teacher } = useLMS();
 
   const [subTab, setSubTab] = useState<'nilai' | 'presensi'>('nilai');
   const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
   const [selectedLocalClassId, setSelectedLocalClassId] = useState<string>(classes[0]?.id || '');
+
+  const fallbackSubject = getPrimarySubject(teacher.subject);
+  const displayedSubjectLabel = activeSubject !== 'all' ? activeSubject : teacher.subject;
 
   // Selected class
   const targetClassId = activeClassId === 'all' ? (selectedLocalClassId || classes[0]?.id || '') : activeClassId;
@@ -18,11 +22,22 @@ export const RekapTab: React.FC = () => {
   // Filter students
   const classStudents = targetClassId ? students.filter((s) => s.classId === targetClassId) : [];
 
-  // Filter tasks for this class
-  const classTasks = tasks.filter((t) => t.classId === 'all' || (targetClassId && t.classId === targetClassId));
+  // Filter tasks for this class & active subject
+  const classTasks = tasks.filter((t) => {
+    const classOk = t.classId === 'all' || (targetClassId && t.classId === targetClassId);
+    const subj = t.subject?.trim() || fallbackSubject;
+    const subjOk = activeSubject === 'all' || subj.toLowerCase() === activeSubject.toLowerCase();
+    return classOk && subjOk;
+  });
 
-  // Filter attendance for this class
-  const classAttendance = targetClassId ? attendance.filter((a) => a.classId === targetClassId) : [];
+  // Filter attendance for this class & active subject
+  const classAttendance = targetClassId
+    ? attendance.filter((a) => {
+        if (a.classId !== targetClassId) return false;
+        const subj = a.subject?.trim() || fallbackSubject;
+        return activeSubject === 'all' || subj.toLowerCase() === activeSubject.toLowerCase();
+      })
+    : [];
 
   // Export to CSV
   const handleExportCSV = () => {
@@ -50,7 +65,8 @@ export const RekapTab: React.FC = () => {
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
     const safeClassName = (targetClassName || 'Kelas').replace(/\s+/g, '_');
-    link.setAttribute('download', `Nilai_${teacher.subject}_${safeClassName}.csv`);
+    const safeSubjectName = (displayedSubjectLabel || 'Mapel').replace(/[^a-zA-Z0-9_-]+/g, '_');
+    link.setAttribute('download', `Nilai_${safeSubjectName}_${safeClassName}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -151,7 +167,7 @@ export const RekapTab: React.FC = () => {
           <div className="p-4 border-b border-slate-100 flex items-center justify-between">
             <div>
               <h3 className="text-sm font-semibold text-slate-900">
-                Buku Rekapitulasi Nilai {teacher.subject}
+                Buku Rekapitulasi Nilai {displayedSubjectLabel}
               </h3>
               <p className="text-xs text-slate-500">
                 {targetClassName} · Kriteria Ketuntasan (KKTP): 75
@@ -171,6 +187,11 @@ export const RekapTab: React.FC = () => {
                   {classTasks.map((t) => (
                     <th key={t.id} className="py-3 px-3 text-center min-w-[110px]" title={t.title}>
                       <span className="line-clamp-1">{t.title}</span>
+                      {t.subject && (
+                        <span className="block text-[10px] font-medium text-indigo-600 truncate">
+                          {t.subject}
+                        </span>
+                      )}
                     </th>
                   ))}
                   <th className="py-3 px-4 text-center font-bold text-slate-900 bg-slate-100/70 min-w-[90px]">
@@ -298,12 +319,17 @@ export const RekapTab: React.FC = () => {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="flex items-center gap-2 text-xs text-slate-500">
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                           <span className="font-semibold text-indigo-700">
                             Pertemuan #{classAttendance.length - idx}
                           </span>
                           <span aria-hidden="true">·</span>
                           <span>Tanggal: {att.date}</span>
+                          {att.subject && (
+                            <span className="text-[11px] font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
+                              {att.subject}
+                            </span>
+                          )}
                         </div>
                         <h4 className="text-sm font-semibold text-slate-900 mt-0.5">
                           {att.topic}

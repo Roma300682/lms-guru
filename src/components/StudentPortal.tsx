@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useLMS } from '../context/LMSContext';
-import { BookOpen, ClipboardList, Award, ExternalLink, Send, CheckCircle, Clock, MessageCircle, Check, Edit2, AlertCircle } from 'lucide-react';
+import { BookOpen, ClipboardList, Award, ExternalLink, Send, CheckCircle, Clock, MessageCircle, Check, Edit2, AlertCircle, Cloud, Loader2 } from 'lucide-react';
 import { FileAttachmentBadge } from './FileAttachmentBadge';
 import { normalizeWhatsAppNumber } from '../utils/whatsapp';
+import { parseSubjects, getPrimarySubject } from '../utils/subjects';
 
 export const StudentPortal: React.FC = () => {
   const {
@@ -19,24 +20,67 @@ export const StudentPortal: React.FC = () => {
     submitTask,
     authSession,
     isCloudConnected,
+    connectGoogleForStudent,
+    cloudAuthError,
     logout,
   } = useLMS();
+  const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
 
   const [activeTab, setActiveTab] = useState<'materi' | 'tugas' | 'rekap'>('materi');
+  const [selectedSubject, setSelectedSubject] = useState<string>('all');
 
   // Currently selected student
   const student = students.find((s) => s.id === currentStudentId) || students[0];
   const studentClass = classes.find((c) => c.id === student?.classId);
 
-  // Filter materials for this student
-  const studentMaterials = materials.filter(
+  const teacherSubjects = parseSubjects(teacher.subject);
+  const fallbackSubject = getPrimarySubject(teacher.subject);
+
+  // Materials, tasks, and attendance matching the student's class
+  const classScopedMaterials = materials.filter(
     (m) => m.classId === 'all' || (student && m.classId === student.classId)
   );
-
-  // Filter tasks for this student
-  const studentTasks = tasks.filter(
+  const classScopedTasks = tasks.filter(
     (t) => t.classId === 'all' || (student && t.classId === student.classId)
   );
+  const classScopedAttendance = attendance.filter((a) => a.classId === student?.classId);
+
+  // Build available subjects for student filter
+  const studentSubjects: string[] = [];
+  const seenSubjectKeys = new Set<string>();
+  const registerStudentSubject = (raw?: string) => {
+    const val = raw?.trim();
+    if (!val) return;
+    const key = val.toLowerCase();
+    if (!seenSubjectKeys.has(key)) {
+      seenSubjectKeys.add(key);
+      studentSubjects.push(val);
+    }
+  };
+  teacherSubjects.forEach(registerStudentSubject);
+  classScopedMaterials.forEach((m) => registerStudentSubject(m.subject));
+  classScopedTasks.forEach((t) => registerStudentSubject(t.subject));
+  classScopedAttendance.forEach((a) => registerStudentSubject(a.subject));
+
+  useEffect(() => {
+    if (
+      selectedSubject !== 'all' &&
+      !studentSubjects.some((s) => s.toLowerCase() === selectedSubject.toLowerCase())
+    ) {
+      setSelectedSubject('all');
+    }
+  }, [selectedSubject, studentSubjects.join('|')]);
+
+  const matchesSelectedSubject = (itemSubject?: string) => {
+    if (selectedSubject === 'all') return true;
+    const resolved = itemSubject?.trim() || fallbackSubject;
+    return resolved.toLowerCase() === selectedSubject.toLowerCase();
+  };
+
+  // Filter materials & tasks for this student + subject filter
+  const studentMaterials = classScopedMaterials.filter((m) => matchesSelectedSubject(m.subject));
+  const studentTasks = classScopedTasks.filter((t) => matchesSelectedSubject(t.subject));
+  const studentAttendance = classScopedAttendance.filter((a) => matchesSelectedSubject(a.subject));
 
   // Task answer submission form state
   const [submittingTaskId, setSubmittingTaskId] = useState<string | null>(null);
@@ -90,20 +134,46 @@ export const StudentPortal: React.FC = () => {
   return (
     <div className="space-y-6">
       {authSession?.role === 'student' && !isCloudConnected && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-amber-900">
-          <div className="flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-            <span>
-              <strong>Belum Terhubung Database Cloud:</strong> Anda masuk di mode lokal, sehingga materi, tugas, dan nilai terbaru dari Guru tidak tampil.
-            </span>
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2 text-xs text-slate-700">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div className="flex items-start gap-2">
+              <Cloud className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <span>
+                <strong>Mode Tanpa Google Aktif:</strong> Anda masuk langsung tanpa akun Google. Hubungkan Google (opsional) kapan saja bila ingin menyinkronkan tugas &amp; nilai ke Cloud Guru.
+              </span>
+            </div>
+            <button
+              type="button"
+              disabled={isConnectingGoogle}
+              onClick={async () => {
+                setIsConnectingGoogle(true);
+                try {
+                  await connectGoogleForStudent();
+                } finally {
+                  setIsConnectingGoogle(false);
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 disabled:opacity-60 rounded-lg transition-colors shrink-0 self-start sm:self-auto"
+            >
+              {isConnectingGoogle ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menghubungkan...</span>
+                </>
+              ) : (
+                <>
+                  <Cloud className="w-3.5 h-3.5" />
+                  <span>Hubungkan Google (Opsional)</span>
+                </>
+              )}
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={logout}
-            className="px-3 py-1.5 font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg transition-colors shrink-0 self-start sm:self-auto"
-          >
-            Hubungkan Google Sekarang
-          </button>
+          {cloudAuthError && (
+            <p className="text-[11px] text-rose-600 flex items-center gap-1">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>{cloudAuthError}</span>
+            </p>
+          )}
         </div>
       )}
 
@@ -111,7 +181,7 @@ export const StudentPortal: React.FC = () => {
       <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="text-xs text-indigo-600 font-semibold tracking-wide uppercase">
-            Portal Belajar Siswa · {teacher.subject}
+            Portal Belajar Siswa · {teacherSubjects.length > 0 ? teacherSubjects.join(' · ') : teacher.subject}
           </div>
           <h2 className="text-lg font-bold text-slate-900">
             Halo, {student ? student.name : 'Siswa'}!
@@ -255,6 +325,41 @@ export const StudentPortal: React.FC = () => {
         </div>
       )}
 
+      {/* Subject Filter Strip when more than 1 subject exists */}
+      {studentSubjects.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1.5 bg-white rounded-xl border border-slate-200 px-3.5 py-2.5">
+          <span className="text-[11px] font-semibold text-slate-500 mr-1">Mata Pelajaran:</span>
+          <button
+            type="button"
+            onClick={() => setSelectedSubject('all')}
+            className={`px-2.5 py-1 text-xs font-medium rounded-lg border transition-colors ${
+              selectedSubject === 'all'
+                ? 'bg-indigo-600 text-white border-indigo-600'
+                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+            }`}
+          >
+            Semua Mapel
+          </button>
+          {studentSubjects.map((subj) => {
+            const active = selectedSubject.toLowerCase() === subj.toLowerCase();
+            return (
+              <button
+                key={subj}
+                type="button"
+                onClick={() => setSelectedSubject(subj)}
+                className={`px-2.5 py-1 text-xs font-medium rounded-lg border transition-colors ${
+                  active
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                {subj}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Navigation tabs for Student */}
       <div className="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto no-scrollbar">
         <button
@@ -308,7 +413,12 @@ export const StudentPortal: React.FC = () => {
                 className="bg-white rounded-xl border border-slate-200 p-5 space-y-3 shadow-xs"
               >
                 <div className="flex items-center justify-between text-xs text-slate-500">
-                  <span className="font-semibold text-indigo-700">Materi Pembelajaran</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-indigo-700">Materi Pembelajaran</span>
+                    <span className="text-[11px] font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
+                      {mat.subject?.trim() || fallbackSubject}
+                    </span>
+                  </div>
                   <span>{mat.date}</span>
                 </div>
                 <h3 className="text-base font-bold text-slate-900">{mat.title}</h3>
@@ -363,8 +473,13 @@ export const StudentPortal: React.FC = () => {
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
                     <div>
-                      <div className="text-xs text-slate-500">
-                        Tenggat Waktu: <strong className="text-slate-800">{task.dueDate}</strong>
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                        <span>
+                          Tenggat Waktu: <strong className="text-slate-800">{task.dueDate}</strong>
+                        </span>
+                        <span className="text-[11px] font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
+                          {task.subject?.trim() || fallbackSubject}
+                        </span>
                       </div>
                       <h3 className="text-base font-bold text-slate-900 mt-0.5">{task.title}</h3>
                     </div>
@@ -519,9 +634,13 @@ export const StudentPortal: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Card 1: Nilai Tugas */}
           <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4 shadow-xs">
-            <h3 className="text-sm font-semibold text-slate-900 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-900 flex items-center justify-between gap-2">
               <span>Rekap Nilai Tugas</span>
-              <span className="text-xs font-normal text-slate-500">{teacher.subject}</span>
+              <span className="text-xs font-normal text-slate-500 text-right">
+                {selectedSubject === 'all'
+                  ? (teacherSubjects.join(' · ') || teacher.subject)
+                  : selectedSubject}
+              </span>
             </h3>
 
             <div className="space-y-2">
@@ -534,7 +653,12 @@ export const StudentPortal: React.FC = () => {
                     key={task.id}
                     className="flex items-center justify-between p-3 rounded-lg border border-slate-100 bg-slate-50 text-xs"
                   >
-                    <span className="font-medium text-slate-800 line-clamp-1">{task.title}</span>
+                    <div className="min-w-0 pr-2">
+                      <span className="font-medium text-slate-800 line-clamp-1 block">{task.title}</span>
+                      {task.subject && (
+                        <span className="text-[10px] text-indigo-600 font-medium">{task.subject}</span>
+                      )}
+                    </div>
                     <span className="font-mono font-bold text-slate-900 shrink-0 ml-2">
                       {sub?.score !== undefined ? (
                         <span className={sub.score >= 75 ? 'text-emerald-700' : 'text-rose-600'}>
@@ -560,36 +684,42 @@ export const StudentPortal: React.FC = () => {
             </h3>
 
             <div className="space-y-2">
-              {attendance
-                .filter((a) => a.classId === student?.classId)
-                .map((att) => {
-                  const status = student ? att.records[student.id] || 'H' : 'H';
-                  const labelMap = { H: 'Hadir', S: 'Sakit', I: 'Izin', A: 'Alpa' };
-                  const colorMap = {
-                    H: 'text-emerald-700 bg-emerald-50 border-emerald-200',
-                    S: 'text-amber-700 bg-amber-50 border-amber-200',
-                    I: 'text-blue-700 bg-blue-50 border-blue-200',
-                    A: 'text-rose-700 bg-rose-50 border-rose-200',
-                  };
+              {studentAttendance.map((att) => {
+                const status = student ? att.records[student.id] || 'H' : 'H';
+                const labelMap = { H: 'Hadir', S: 'Sakit', I: 'Izin', A: 'Alpa' };
+                const colorMap = {
+                  H: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+                  S: 'text-amber-700 bg-amber-50 border-amber-200',
+                  I: 'text-blue-700 bg-blue-50 border-blue-200',
+                  A: 'text-rose-700 bg-rose-50 border-rose-200',
+                };
 
-                  return (
-                    <div
-                      key={att.id}
-                      className="flex items-center justify-between p-3 rounded-lg border border-slate-100 bg-slate-50 text-xs"
-                    >
-                      <div>
-                        <div className="font-medium text-slate-800">{att.topic}</div>
-                        <div className="text-[11px] text-slate-400">{att.date}</div>
+                return (
+                  <div
+                    key={att.id}
+                    className="flex items-center justify-between p-3 rounded-lg border border-slate-100 bg-slate-50 text-xs"
+                  >
+                    <div>
+                      <div className="font-medium text-slate-800">{att.topic}</div>
+                      <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                        <span>{att.date}</span>
+                        {att.subject && (
+                          <>
+                            <span>·</span>
+                            <span className="text-indigo-600 font-medium">{att.subject}</span>
+                          </>
+                        )}
                       </div>
-                      <span className={`px-2.5 py-0.5 rounded text-xs font-semibold border ${colorMap[status]}`}>
-                        {labelMap[status]}
-                      </span>
                     </div>
-                  );
-                })}
-              {attendance.filter((a) => a.classId === student?.classId).length === 0 && (
+                    <span className={`px-2.5 py-0.5 rounded text-xs font-semibold border ${colorMap[status]}`}>
+                      {labelMap[status]}
+                    </span>
+                  </div>
+                );
+              })}
+              {studentAttendance.length === 0 && (
                 <p className="text-xs text-slate-400 py-6 text-center">
-                  Belum ada catatan presensi untuk kelas ini.
+                  Belum ada catatan presensi untuk kelas/mapel ini.
                 </p>
               )}
             </div>

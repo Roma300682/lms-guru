@@ -35,7 +35,7 @@
         "subject": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 120
+          "maxLength": 300
         },
         "kktp": {
           "type": "number"
@@ -199,6 +199,10 @@
           "minLength": 1,
           "maxLength": 200
         },
+        "subject": {
+          "type": "string",
+          "maxLength": 120
+        },
         "content": {
           "type": "string",
           "maxLength": 20000
@@ -262,6 +266,10 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 200
+        },
+        "subject": {
+          "type": "string",
+          "maxLength": 120
         },
         "instructions": {
           "type": "string",
@@ -396,6 +404,10 @@
           "minLength": 1,
           "maxLength": 128,
           "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "subject": {
+          "type": "string",
+          "maxLength": 120
         },
         "topic": {
           "type": "string",

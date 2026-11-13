@@ -23,6 +23,7 @@ import {
   CheckCircle2,
   FileText,
 } from 'lucide-react';
+import { getPrimarySubject } from '../../utils/subjects';
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D'] as const;
 
@@ -135,6 +136,8 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks 
     materials,
     classes,
     activeClassId,
+    activeSubject,
+    availableSubjects,
     addTask,
     questionSets: savedSets,
     addQuestionSet,
@@ -142,6 +145,9 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks 
     deleteQuestionSet,
   } = useLMS();
 
+  const [questionSubject, setQuestionSubject] = useState<string>(() =>
+    activeSubject !== 'all' ? activeSubject : getPrimarySubject(teacher.subject)
+  );
   const [uraianMateri, setUraianMateri] = useState('');
   const [pgCount, setPgCount] = useState<number>(10);
   const [essayCount, setEssayCount] = useState<number>(2);
@@ -177,6 +183,14 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks 
     setShareClassId(activeClassId || 'all');
   }, [activeClassId]);
 
+  useEffect(() => {
+    if (activeSubject !== 'all') {
+      setQuestionSubject(activeSubject);
+    } else {
+      setQuestionSubject((prev) => prev || getPrimarySubject(teacher.subject));
+    }
+  }, [activeSubject, teacher.subject]);
+
   const activeSet = savedSets.find((s) => s.id === activeSetId) || null;
 
   const handlePgCountChange = (val: string) => {
@@ -205,6 +219,9 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks 
     setSelectedMaterialId(matId);
     const mat = materials.find((m) => m.id === matId);
     if (!mat) return;
+    if (mat.subject?.trim()) {
+      setQuestionSubject(mat.subject.trim());
+    }
     const combined = `${mat.title}\n\n${mat.content}`.trim();
     setUraianMateri(combined);
     setErrorMsg('');
@@ -265,6 +282,8 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks 
       const esList: GeneratedEssayQuestion[] = [];
       let resolvedTitle = '';
 
+      const resolvedSubject = questionSubject.trim() || getPrimarySubject(teacher.subject);
+
       for (let i = 0; i < batches.length; i++) {
         const b = batches[i];
         const response = await fetch('/api/generate-questions', {
@@ -274,7 +293,7 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks 
             uraianMateri: trimmed,
             pgCount: b.pg,
             essayCount: b.essay,
-            subject: teacher.subject,
+            subject: resolvedSubject,
           }),
         });
 
@@ -296,8 +315,8 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks 
 
       const newSet: GeneratedQuestionSet = {
         id: `qset_${Date.now()}`,
-        title: resolvedTitle || `Latihan ${teacher.subject}`,
-        subject: teacher.subject,
+        title: resolvedTitle || `Latihan ${resolvedSubject}`,
+        subject: resolvedSubject,
         sourceMaterial: trimmed,
         createdAt: new Date().toISOString().split('T')[0],
         pgCount: mcList.length,
@@ -467,6 +486,7 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks 
 
     addTask({
       title: activeSet.title,
+      subject: activeSet.subject,
       instructions: previewLines.join('\n'),
       dueDate: shareDueDate,
       classId: shareClassId || 'all',
@@ -495,12 +515,48 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({ onNavigateToTasks 
           </div>
         </div>
         <div className="text-xs text-slate-600 bg-slate-50 border border-slate-200 px-3 py-2 rounded-lg shrink-0">
-          Mapel Aktif: <strong className="text-indigo-700">{teacher.subject}</strong>
+          Mapel Soal: <strong className="text-indigo-700">{questionSubject.trim() || getPrimarySubject(teacher.subject)}</strong>
         </div>
       </div>
 
       {/* Generator Form */}
       <form onSubmit={handleGenerate} className="bg-white rounded-xl border border-slate-200 p-5 space-y-4 print:hidden">
+        {/* Mata Pelajaran Soal (Bebas) */}
+        <div className="space-y-1.5">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <label htmlFor="soal-subject" className="text-xs font-semibold text-slate-800 shrink-0">
+              Mata Pelajaran Soal (Bebas):
+            </label>
+            <input
+              id="soal-subject"
+              type="text"
+              value={questionSubject}
+              onChange={(e) => setQuestionSubject(e.target.value)}
+              placeholder="Ketik nama mapel apa saja..."
+              className="w-full sm:max-w-xs text-xs px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 bg-white"
+            />
+          </div>
+          {availableSubjects.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] text-slate-500">Pilih cepat:</span>
+              {availableSubjects.map((subj) => (
+                <button
+                  key={subj}
+                  type="button"
+                  onClick={() => setQuestionSubject(subj)}
+                  className={`px-2 py-0.5 text-[11px] font-medium rounded-md border transition-colors ${
+                    questionSubject.trim().toLowerCase() === subj.toLowerCase()
+                      ? 'bg-indigo-50 text-indigo-700 border-indigo-200 font-semibold'
+                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  {subj}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <label htmlFor="uraian-materi" className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
             <BookOpen className="w-4 h-4 text-indigo-600" />

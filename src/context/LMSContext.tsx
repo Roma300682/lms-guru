@@ -4,6 +4,7 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   setDoc,
   updateDoc,
   deleteDoc,
@@ -52,10 +53,13 @@ import {
   getFileAttachment,
   deleteFileAttachment,
 } from '../utils/fileStorage';
+import { parseSubjects, getPrimarySubject } from '../utils/subjects';
 
 interface LMSContextType {
   // State
   teacher: TeacherProfile;
+  teacherSubjects: string[];
+  availableSubjects: string[];
   classes: ClassRoom[];
   students: Student[];
   materials: Material[];
@@ -64,6 +68,7 @@ interface LMSContextType {
   attendance: AttendanceRecord[];
   questionSets: GeneratedQuestionSet[];
   activeClassId: string; // 'all' or classId
+  activeSubject: string; // 'all' or subject name
   viewMode: 'teacher' | 'student';
   currentStudentId: string;
 
@@ -88,6 +93,7 @@ interface LMSContextType {
 
   // Actions
   setActiveClassId: (id: string) => void;
+  setActiveSubject: (subject: string) => void;
   setViewMode: (mode: 'teacher' | 'student') => void;
   setCurrentStudentId: (id: string) => void;
   updateTeacher: (profile: Partial<TeacherProfile>) => void;
@@ -106,6 +112,7 @@ interface LMSContextType {
   exportBackup: () => void;
   importBackup: (jsonContent: string) => Promise<{ ok: boolean; message: string }>;
   syncLocalDataToCloud: () => Promise<{ ok: boolean; message: string }>;
+  resetCloudDatabase: () => Promise<{ ok: boolean; message: string }>;
 
   // Material Actions
   addMaterial: (material: Omit<Material, 'id' | 'date'>) => void;
@@ -120,7 +127,7 @@ interface LMSContextType {
   gradeSubmission: (submissionId: string, score: number, note?: string) => void;
 
   // Attendance Actions
-  saveAttendance: (date: string, classId: string, topic: string, records: Record<string, AttendanceStatus>) => void;
+  saveAttendance: (date: string, classId: string, topic: string, records: Record<string, AttendanceStatus>, subject?: string) => void;
   deleteAttendance: (id: string) => void;
 
   // AI Question Set Actions
@@ -188,11 +195,22 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 
   const [activeClassId, setActiveClassId] = useState<string>('c1');
+  const [activeSubject, setActiveSubject] = useState<string>('all');
   const [viewMode, setViewModeState] = useState<'teacher' | 'student'>('student');
-  const [currentStudentId, setCurrentStudentId] = useState<string>('s1');
+  const [currentStudentId, setCurrentStudentId] = useState<string>(() => {
+    const saved = safeParse<{ role?: string; studentId?: string } | null>('gm_student_session', null);
+    if (saved?.role === 'student' && typeof saved.studentId === 'string' && saved.studentId) {
+      return saved.studentId;
+    }
+    return 's1';
+  });
 
   const [authSession, setAuthSession] = useState<AuthSession | null>(() => {
     localStorage.removeItem('gm_session');
+    const saved = safeParse<{ role?: string; studentId?: string } | null>('gm_student_session', null);
+    if (saved?.role === 'student' && typeof saved.studentId === 'string' && saved.studentId) {
+      return { role: 'student', studentId: saved.studentId };
+    }
     return null;
   });
 
@@ -210,6 +228,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const taskOwnerMapRef = useRef<Record<string, string>>({});
   const submissionStudentUidMapRef = useRef<Record<string, string>>({});
   const hasSeededCloudRef = useRef<boolean>(false);
+  const isSeedingCloudRef = useRef<boolean>(false);
   const cloudIdsRef = useRef<{
     hasTeacherPublic: boolean;
     hasTeacherPrivate: boolean;
@@ -257,6 +276,41 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const isCloudConnected = Boolean(firebaseUser && firebaseUser.emailVerified);
+
+  // Multi-subject helpers: configured teacher subjects + any free subject attached to materials/tasks/attendance/questionSets
+  const teacherSubjects: string[] = React.useMemo(
+    () => parseSubjects(teacher.subject),
+    [teacher.subject]
+  );
+
+  const availableSubjects: string[] = React.useMemo(() => {
+    const seen = new Set<string>();
+    const list: string[] = [];
+    const pushItem = (raw?: string) => {
+      const cleaned = raw?.trim();
+      if (!cleaned) return;
+      const key = cleaned.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        list.push(cleaned);
+      }
+    };
+    teacherSubjects.forEach(pushItem);
+    materials.forEach((m) => pushItem(m.subject));
+    tasks.forEach((t) => pushItem(t.subject));
+    attendance.forEach((a) => pushItem(a.subject));
+    questionSets.forEach((q) => pushItem(q.subject));
+    return list;
+  }, [teacherSubjects, materials, tasks, attendance, questionSets]);
+
+  useEffect(() => {
+    if (
+      activeSubject !== 'all' &&
+      !availableSubjects.some((s) => s.toLowerCase() === activeSubject.toLowerCase())
+    ) {
+      setActiveSubject('all');
+    }
+  }, [activeSubject, availableSubjects]);
 
   // Merge roster + isolated private WA contacts
   const students: Student[] = React.useMemo(
@@ -370,7 +424,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       } else {
         setIsCloudAdmin(false);
-        setAuthSession(null);
+        setAuthSession((prev) => (prev?.role === 'student' ? prev : null));
         setViewModeState('student');
         hasSeededCloudRef.current = false;
         cloudIdsRef.current = {
@@ -471,7 +525,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ref: doc(db, 'settings', 'teacherPublic'),
           data: {
             name: clampStr(srcTeacher.name || 'Guru Mata Pelajaran', 120),
-            subject: clampStr(srcTeacher.subject || 'Mata Pelajaran', 120),
+            subject: clampStr(srcTeacher.subject || 'Mata Pelajaran', 300),
             kktp: typeof srcTeacher.kktp === 'number' ? Math.min(100, Math.max(0, srcTeacher.kktp)) : 75,
             visibility: 'classroom',
             updatedAt: serverTimestamp(),
@@ -483,7 +537,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ref: doc(db, 'settings', 'teacherPublic'),
           data: {
             name: clampStr(srcTeacher.name || 'Guru Mata Pelajaran', 120),
-            subject: clampStr(srcTeacher.subject || 'Mata Pelajaran', 120),
+            subject: clampStr(srcTeacher.subject || 'Mata Pelajaran', 300),
             kktp: typeof srcTeacher.kktp === 'number' ? Math.min(100, Math.max(0, srcTeacher.kktp)) : 75,
             visibility: 'classroom',
             ownerUid: adminUid,
@@ -615,6 +669,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           visibility: 'classroom',
           updatedAt: serverTimestamp(),
         };
+        if (mat.subject && mat.subject.trim()) baseMat.subject = clampStr(mat.subject.trim(), 120);
         if (mat.linkUrl) baseMat.linkUrl = clampStr(mat.linkUrl, 500);
         if (mat.attachment) {
           baseMat.attachmentName = clampStr(mat.attachment.name, 200);
@@ -655,6 +710,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           visibility: 'classroom',
           updatedAt: serverTimestamp(),
         };
+        if (tsk.subject && tsk.subject.trim()) baseTask.subject = clampStr(tsk.subject.trim(), 120);
         if (tsk.attachment) {
           baseTask.attachmentName = clampStr(tsk.attachment.name, 200);
           baseTask.attachmentSize = clampStr(tsk.attachment.size, 40);
@@ -690,6 +746,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           visibility: 'classroom',
           updatedAt: serverTimestamp(),
         };
+        if (att.subject && att.subject.trim()) baseAtt.subject = clampStr(att.subject.trim(), 120);
         if (exists) {
           phase2Ops.push({ mode: 'update', ref: doc(db, 'attendance', aid), data: baseAtt });
         } else {
@@ -796,6 +853,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const pubSnap = await getDoc(doc(db, 'settings', 'teacherPublic'));
         if (pubSnap.exists()) return;
 
+        isSeedingCloudRef.current = true;
         const snapshot = latestLocalRef.current;
         await pushDatasetToFirestore(adminUid, {
           teacher: snapshot.teacher,
@@ -808,6 +866,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, 'bootstrap_seed');
+      } finally {
+        isSeedingCloudRef.current = false;
       }
     },
     [pushDatasetToFirestore]
@@ -864,7 +924,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             };
           });
           list.sort((a, b) => a.name.localeCompare(b.name, 'id'));
-          if (list.length > 0 || !hasSeededCloudRef.current) {
+          if (!isSeedingCloudRef.current || list.length > 0) {
             setClasses(list);
           }
         },
@@ -910,6 +970,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return {
               id: docSnap.id,
               title: d.title || '',
+              subject: typeof d.subject === 'string' && d.subject.trim() ? d.subject.trim() : undefined,
               content: d.content || '',
               linkUrl: d.linkUrl || undefined,
               classId: d.classId || 'all',
@@ -961,6 +1022,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return {
               id: docSnap.id,
               title: d.title || '',
+              subject: typeof d.subject === 'string' && d.subject.trim() ? d.subject.trim() : undefined,
               instructions: d.instructions || '',
               dueDate: d.dueDate || '',
               classId: d.classId || 'all',
@@ -1010,6 +1072,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               id: docSnap.id,
               date: d.date || '',
               classId: d.classId || '',
+              subject: typeof d.subject === 'string' && d.subject.trim() ? d.subject.trim() : undefined,
               topic: d.topic || '',
               records: d.records || {},
             };
@@ -1324,10 +1387,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const loginAsStudent = (studentId: string, whatsapp?: string) => {
-    if (!firebaseUser || !firebaseUser.emailVerified) {
-      setCloudAuthError('Silakan hubungkan akun Google Anda terlebih dahulu di tab Masuk Siswa.');
-      return;
-    }
+    clearCloudAuthError();
     const cleanWa = whatsapp?.trim();
     if (cleanWa) {
       setStudentsRoster((prev) =>
@@ -1335,7 +1395,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
       setStudentContacts((prev) => ({ ...prev, [studentId]: cleanWa }));
     }
-    setAuthSession({ role: 'student', studentId });
+    const session: AuthSession = { role: 'student', studentId };
+    setAuthSession(session);
+    try {
+      localStorage.setItem('gm_student_session', JSON.stringify(session));
+    } catch {
+      // ignore localStorage quota error
+    }
     setCurrentStudentId(studentId);
     setViewModeState('student');
     const targetStudent = studentsRoster.find((s) => s.id === studentId);
@@ -1343,14 +1409,26 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setActiveClassId(targetStudent.classId);
     }
 
-    void syncStudentClaimAndWa(studentId, cleanWa);
+    if (firebaseUser && firebaseUser.emailVerified) {
+      void syncStudentClaimAndWa(studentId, cleanWa);
+    }
   };
+
+  // If a non-Google student later connects Google optionally inside StudentPortal, sync their claim & WA
+  useEffect(() => {
+    if (firebaseUser && firebaseUser.emailVerified && authSession?.role === 'student' && currentStudentId) {
+      const localWa = studentContacts[currentStudentId] || studentsRoster.find((s) => s.id === currentStudentId)?.whatsapp;
+      void syncStudentClaimAndWa(currentStudentId, localWa);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firebaseUser?.uid, authSession?.role, currentStudentId]);
 
   const logout = () => {
     setAuthSession(null);
     setViewModeState('student');
     setIsCloudAdmin(false);
     localStorage.removeItem('gm_cloud_uid');
+    localStorage.removeItem('gm_student_session');
     if (firebaseUser) {
       void signOutFirebase();
     }
@@ -1515,7 +1593,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       doc(db, 'settings', 'teacherPublic'),
       {
         name: clampStr(next.name || 'Guru Mapel', 120),
-        subject: clampStr(next.subject || 'Mata Pelajaran', 120),
+        subject: clampStr(next.subject || 'Mata Pelajaran', 300),
         kktp: typeof next.kktp === 'number' ? Math.min(100, Math.max(0, next.kktp)) : 75,
         visibility: 'classroom',
         ownerUid: teacherOwnerUidRef.current || firebaseUser.uid,
@@ -1685,9 +1763,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateStudent = (id: string, patch: Partial<Pick<Student, 'name' | 'classId' | 'whatsapp'>>) => {
-    if (!firebaseUser || !firebaseUser.emailVerified) return;
-
-    if (isAuthorizedTeacher) {
+    if (isAuthorizedTeacher && firebaseUser && firebaseUser.emailVerified) {
       setStudentsRoster((prev) =>
         prev.map((s) => (s.id === id ? { ...s, ...patch } : s))
       );
@@ -1719,13 +1795,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         );
       }
     } else if (authSession?.role === 'student' && id === currentStudentId && patch.whatsapp !== undefined) {
-      // Student self-service WhatsApp update for their own claimed student record only
+      // Student self-service WhatsApp update (works both without Google and with Google Cloud sync)
       const cleanWa = patch.whatsapp.trim();
       setStudentsRoster((prev) =>
         prev.map((s) => (s.id === id ? { ...s, whatsapp: cleanWa } : s))
       );
       setStudentContacts((prev) => ({ ...prev, [id]: cleanWa }));
-      void syncStudentClaimAndWa(id, cleanWa);
+      if (firebaseUser && firebaseUser.emailVerified) {
+        void syncStudentClaimAndWa(id, cleanWa);
+      }
     }
   };
 
@@ -1835,7 +1913,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Backup_LMS_${teacher.subject.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.json`;
+    const safeSubj = getPrimarySubject(teacher.subject).replace(/[^a-zA-Z0-9_-]+/g, '_');
+    a.download = `Backup_LMS_${safeSubj}_${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -2073,8 +2152,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addMaterial = (item: Omit<Material, 'id' | 'date'>) => {
     if (!isAuthorizedTeacher || !firebaseUser) return;
     const today = new Date().toISOString().split('T')[0];
+    const cleanSubject = item.subject?.trim() || undefined;
     const newMaterial: Material = {
       ...item,
+      subject: cleanSubject,
       id: 'm_' + Date.now(),
       date: today,
     };
@@ -2093,6 +2174,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
+    if (cleanSubject) matData.subject = clampStr(cleanSubject, 120);
     if (newMaterial.linkUrl) matData.linkUrl = clampStr(newMaterial.linkUrl, 500);
     if (newMaterial.attachment) {
       matData.attachmentName = clampStr(newMaterial.attachment.name, 200);
@@ -2123,8 +2205,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addTask = (item: Omit<Task, 'id' | 'createdAt'>) => {
     if (!isAuthorizedTeacher || !firebaseUser) return;
     const today = new Date().toISOString().split('T')[0];
+    const cleanSubject = item.subject?.trim() || undefined;
     const newTask: Task = {
       ...item,
+      subject: cleanSubject,
       id: 't_' + Date.now(),
       createdAt: today,
     };
@@ -2144,6 +2228,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
+    if (cleanSubject) taskData.subject = clampStr(cleanSubject, 120);
     if (newTask.attachment) {
       taskData.attachmentName = clampStr(newTask.attachment.name, 200);
       taskData.attachmentSize = clampStr(newTask.attachment.size, 40);
@@ -2279,19 +2364,22 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     date: string,
     classId: string,
     topic: string,
-    records: Record<string, AttendanceStatus>
+    records: Record<string, AttendanceStatus>,
+    subject?: string
   ) => {
     if (!isAuthorizedTeacher || !firebaseUser) return;
+    const cleanSubject = subject?.trim() || undefined;
     const newRecord: AttendanceRecord = {
       id: 'att_' + Date.now(),
       date,
       classId,
+      subject: cleanSubject,
       topic,
       records,
     };
     setAttendance((prev) => [newRecord, ...prev]);
 
-    void setDoc(doc(db, 'attendance', newRecord.id), {
+    const attPayload: Record<string, unknown> = {
       date: clampStr(date, 30),
       classId,
       topic: clampStr(topic || 'Pertemuan', 200),
@@ -2300,7 +2388,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ownerUid: firebaseUser.uid,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-    }).catch((err) => handleFirestoreError(err, OperationType.CREATE, `attendance/${newRecord.id}`));
+    };
+    if (cleanSubject) attPayload.subject = clampStr(cleanSubject, 120);
+
+    void setDoc(doc(db, 'attendance', newRecord.id), attPayload).catch((err) =>
+      handleFirestoreError(err, OperationType.CREATE, `attendance/${newRecord.id}`)
+    );
   };
 
   const deleteAttendance = (id: string) => {
@@ -2358,26 +2451,134 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
+  const resetCloudDatabase = async (): Promise<{ ok: boolean; message: string }> => {
+    if (!isAuthorizedTeacher || !firebaseUser) {
+      return {
+        ok: false,
+        message: 'Hanya Guru / Admin Google terverifikasi yang dapat mereset database Cloud.',
+      };
+    }
+
+    try {
+      // Ensure settings/teacherPublic stays initialized so seedCloudDatabaseIfEmpty will never re-upload dummy data
+      const pubSnap = await getDoc(doc(db, 'settings', 'teacherPublic'));
+      if (!pubSnap.exists()) {
+        await setDoc(doc(db, 'settings', 'teacherPublic'), {
+          name: clampStr(teacher.name || 'Guru Mapel', 120),
+          subject: clampStr(teacher.subject || 'Mata Pelajaran', 120),
+          kktp: typeof teacher.kktp === 'number' ? Math.min(100, Math.max(0, teacher.kktp)) : 75,
+          visibility: 'classroom',
+          ownerUid: firebaseUser.uid,
+          updatedAt: serverTimestamp(),
+        });
+      }
+
+      const subsQuery =
+        firebaseUser.email?.toLowerCase() === BOOTSTRAP_ADMIN_EMAIL.toLowerCase()
+          ? collection(db, 'submissions')
+          : query(collection(db, 'submissions'), where('ownerUid', '==', firebaseUser.uid));
+      const qSetsQuery =
+        firebaseUser.email?.toLowerCase() === BOOTSTRAP_ADMIN_EMAIL.toLowerCase()
+          ? collection(db, 'questionSets')
+          : query(collection(db, 'questionSets'), where('ownerUid', '==', firebaseUser.uid));
+
+      const [classSnap, studentSnap, matSnap, taskSnap, attSnap, subSnap, qSetSnap] = await Promise.all([
+        getDocs(query(collection(db, 'classes'), where('visibility', '==', 'classroom'))),
+        getDocs(query(collection(db, 'students'), where('visibility', '==', 'classroom'))),
+        getDocs(query(collection(db, 'materials'), where('visibility', '==', 'classroom'))),
+        getDocs(query(collection(db, 'tasks'), where('visibility', '==', 'classroom'))),
+        getDocs(query(collection(db, 'attendance'), where('visibility', '==', 'classroom'))),
+        getDocs(subsQuery),
+        getDocs(qSetsQuery),
+      ]);
+
+      const classIds = new Set([...classSnap.docs.map((d) => d.id), ...cloudIdsRef.current.classes, ...classes.map((c) => c.id)]);
+      const studentIds = new Set([...studentSnap.docs.map((d) => d.id), ...cloudIdsRef.current.students, ...studentsRoster.map((s) => s.id)]);
+      const materialIds = new Set([...matSnap.docs.map((d) => d.id), ...cloudIdsRef.current.materials, ...materials.map((m) => m.id)]);
+      const taskIds = new Set([...taskSnap.docs.map((d) => d.id), ...cloudIdsRef.current.tasks, ...tasks.map((t) => t.id)]);
+      const attendanceIds = new Set([...attSnap.docs.map((d) => d.id), ...cloudIdsRef.current.attendance, ...attendance.map((a) => a.id)]);
+      const submissionIds = new Set([...subSnap.docs.map((d) => d.id), ...cloudIdsRef.current.submissions, ...submissions.map((s) => s.id)]);
+      const qSetIds = new Set([...qSetSnap.docs.map((d) => d.id), ...cloudIdsRef.current.questionSets, ...questionSets.map((q) => q.id)]);
+
+      const refs = [
+        ...Array.from(classIds).map((id) => doc(db, 'classes', id)),
+        ...Array.from(studentIds).flatMap((id) => [
+          doc(db, 'students', id),
+          doc(db, 'students', id, 'private', 'contact'),
+        ]),
+        ...Array.from(materialIds).map((id) => doc(db, 'materials', id)),
+        ...Array.from(taskIds).map((id) => doc(db, 'tasks', id)),
+        ...Array.from(attendanceIds).map((id) => doc(db, 'attendance', id)),
+        ...Array.from(submissionIds).map((id) => doc(db, 'submissions', id)),
+        ...Array.from(qSetIds).map((id) => doc(db, 'questionSets', id)),
+      ];
+
+      for (let i = 0; i < refs.length; i += 350) {
+        const batch = writeBatch(db);
+        refs.slice(i, i + 350).forEach((r) => batch.delete(r));
+        await batch.commit();
+      }
+
+      materialIds.forEach((id) => deleteFileAttachment(id));
+      taskIds.forEach((id) => deleteFileAttachment(id));
+
+      cloudIdsRef.current.classes = new Set();
+      cloudIdsRef.current.students = new Set();
+      cloudIdsRef.current.contacts = new Set();
+      cloudIdsRef.current.materials = new Set();
+      cloudIdsRef.current.tasks = new Set();
+      cloudIdsRef.current.attendance = new Set();
+      cloudIdsRef.current.submissions = new Set();
+      cloudIdsRef.current.questionSets = new Set();
+      hasSeededCloudRef.current = true;
+
+      setClasses([]);
+      setStudentsRoster([]);
+      setStudentContacts({});
+      setMaterials([]);
+      setTasks([]);
+      setSubmissions([]);
+      setAttendance([]);
+      setQuestionSets([]);
+      setActiveClassId('all');
+      setCurrentStudentId('');
+
+      [
+        'gm_classes',
+        'gm_students',
+        'gm_materials',
+        'gm_tasks',
+        'gm_submissions',
+        'gm_attendance',
+        'gm_ai_questions',
+        'gm_precloud_backup',
+        'gm_student_session',
+      ].forEach((k) => localStorage.removeItem(k));
+
+      return {
+        ok: true,
+        message: 'Database Cloud dan perangkat ini berhasil dikosongkan total (0 rombel, 0 siswa, 0 materi, 0 tugas, 0 absensi, 0 jawaban, 0 soal AI).',
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        ok: false,
+        message: `Gagal mereset database Cloud: ${msg}`,
+      };
+    }
+  };
+
   const resetData = () => {
     if (!isAuthorizedTeacher) return;
-    setTeacher(initialTeacher);
-    setClasses(initialClasses);
-    setStudentsRoster(initialStudents);
-    setStudentContacts({});
-    setMaterials(initialMaterials);
-    setTasks(initialTasks);
-    setSubmissions(initialSubmissions);
-    setAttendance(initialAttendance);
-    setQuestionSets([]);
-    setActiveClassId('c1');
-    setCurrentStudentId('s1');
-    localStorage.clear();
+    void resetCloudDatabase();
   };
 
   return (
     <LMSContext.Provider
       value={{
         teacher,
+        teacherSubjects,
+        availableSubjects,
         classes,
         students,
         materials,
@@ -2386,6 +2587,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         attendance,
         questionSets,
         activeClassId,
+        activeSubject,
         viewMode,
         currentStudentId,
         firebaseUser,
@@ -2405,6 +2607,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         logout,
         resetTeacherPin,
         setActiveClassId,
+        setActiveSubject,
         setViewMode,
         setCurrentStudentId,
         updateTeacher,
@@ -2419,6 +2622,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         exportBackup,
         importBackup,
         syncLocalDataToCloud,
+        resetCloudDatabase,
         addMaterial,
         deleteMaterial,
         addTask,

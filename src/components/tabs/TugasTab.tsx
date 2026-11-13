@@ -5,22 +5,28 @@ import { GradeModal } from '../modals/GradeModal';
 import { FileAttachmentBadge } from '../FileAttachmentBadge';
 import { Submission, WhatsAppPrefill } from '../../types/lms';
 import { Plus, ClipboardList, ChevronDown, ChevronUp, CheckCircle, Clock, Trash2, Edit3, MessageCircle, Bell } from 'lucide-react';
+import { getPrimarySubject } from '../../utils/subjects';
 
 interface TugasTabProps {
   onShareToWhatsApp?: (prefill: WhatsAppPrefill) => void;
 }
 
 export const TugasTab: React.FC<TugasTabProps> = ({ onShareToWhatsApp }) => {
-  const { tasks, deleteTask, submissions, activeClassId, classes, students, teacher } = useLMS();
+  const { tasks, deleteTask, submissions, activeClassId, activeSubject, classes, students, teacher } = useLMS();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
 
-  // Filter tasks based on active class
+  const fallbackSubject = getPrimarySubject(teacher.subject);
+
+  // Filter tasks based on active class and active subject
   const filteredTasks = tasks.filter((t) => {
-    if (activeClassId === 'all') return true;
-    return t.classId === 'all' || t.classId === activeClassId;
+    const classMatch = activeClassId === 'all' || t.classId === 'all' || t.classId === activeClassId;
+    const itemSubject = t.subject?.trim() || fallbackSubject;
+    const subjectMatch =
+      activeSubject === 'all' || itemSubject.toLowerCase() === activeSubject.toLowerCase();
+    return classMatch && subjectMatch;
   });
 
   const getClassName = (classId: string) => {
@@ -85,8 +91,11 @@ export const TugasTab: React.FC<TugasTabProps> = ({ onShareToWhatsApp }) => {
                 <div className="p-5 space-y-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-xs text-slate-500">
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
                         <span className="font-medium text-indigo-700">{getClassName(task.classId)}</span>
+                        <span className="font-medium text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                          {task.subject || fallbackSubject}
+                        </span>
                         <span aria-hidden="true">·</span>
                         <span>Tenggat: {task.dueDate}</span>
                       </div>
@@ -101,7 +110,7 @@ export const TugasTab: React.FC<TugasTabProps> = ({ onShareToWhatsApp }) => {
                             onClick={() =>
                               onShareToWhatsApp({
                                 classId: task.classId,
-                                message: `Halo {nama} ({kelas}),\n\nAda tugas baru mata pelajaran *${teacher.subject}*:\n*${task.title}*\nTenggat: *${task.dueDate}*\n\n${task.instructions}\n\nSilakan kerjakan dan kumpulkan di GuruMapel LMS.\nSalam,\n${teacher.name}`,
+                                message: `Halo {nama} ({kelas}),\n\nAda tugas baru mata pelajaran *${task.subject || fallbackSubject}*:\n*${task.title}*\nTenggat: *${task.dueDate}*\n\n${task.instructions}\n\nSilakan kerjakan dan kumpulkan di GuruMapel LMS.\nSalam,\n${teacher.name}`,
                               })
                             }
                             className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-md transition-colors"
@@ -116,7 +125,7 @@ export const TugasTab: React.FC<TugasTabProps> = ({ onShareToWhatsApp }) => {
                               onShareToWhatsApp({
                                 classId: task.classId,
                                 onlyUnsubmittedTaskId: task.id,
-                                message: `Halo {nama} ({kelas}),\n\nPengingat tugas *${teacher.subject}*:\n*${task.title}*\nBatas pengumpulan: *${task.dueDate}*\n\nTercatat Anda belum mengumpulkan tugas ini di GuruMapel LMS. Mohon segera dikumpulkan ya.\nTerima kasih,\n${teacher.name}`,
+                                message: `Halo {nama} ({kelas}),\n\nPengingat tugas *${task.subject || fallbackSubject}*:\n*${task.title}*\nBatas pengumpulan: *${task.dueDate}*\n\nTercatat Anda belum mengumpulkan tugas ini di GuruMapel LMS. Mohon segera dikumpulkan ya.\nTerima kasih,\n${teacher.name}`,
                               })
                             }
                             className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-md transition-colors"

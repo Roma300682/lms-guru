@@ -6,6 +6,7 @@ import {
   normalizeWhatsAppNumber,
   personalizeWhatsAppMessage,
 } from '../../utils/whatsapp';
+import { getPrimarySubject } from '../../utils/subjects';
 import {
   MessageCircle,
   Send,
@@ -46,9 +47,12 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({ prefill, onClearPrefil
     tasks,
     submissions,
     activeClassId,
+    activeSubject,
     updateStudent,
     updateClass,
   } = useLMS();
+
+  const defaultSubject = activeSubject !== 'all' ? activeSubject : getPrimarySubject(teacher.subject);
 
   const [targetClassId, setTargetClassId] = useState<string>(activeClassId || 'all');
   const [filterMode, setFilterMode] = useState<'all' | 'unsubmitted'>('all');
@@ -56,7 +60,7 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({ prefill, onClearPrefil
   const [selectedMaterialId, setSelectedMaterialId] = useState<string>(materials[0]?.id || '');
 
   const [messageTemplate, setMessageTemplate] = useState<string>(
-    `Halo {nama} ({kelas}),\n\nInformasi terbaru mata pelajaran *${teacher.subject}* dari ${teacher.name}:\n\nSilakan cek materi dan tugas terbaru di portal GuruMapel LMS. Terima kasih.`
+    `Halo {nama} ({kelas}),\n\nInformasi terbaru mata pelajaran *{mapel}* dari {guru}:\n\nSilakan cek materi dan tugas terbaru di portal GuruMapel LMS. Terima kasih.`
   );
 
   // Per-student sent/edited state
@@ -168,18 +172,22 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({ prefill, onClearPrefil
     [readyStudents, sentIds]
   );
 
+  const activeContextSubject =
+    (filterMode === 'unsubmitted' && tasks.find((t) => t.id === selectedTaskId)?.subject?.trim()) ||
+    defaultSubject;
+
   const buildPersonalizedForStudent = (studentName: string, studentClassId: string) =>
     personalizeWhatsAppMessage(messageTemplate, {
       name: studentName,
       className: getClassName(studentClassId),
-      subject: teacher.subject,
+      subject: activeContextSubject,
       teacherName: teacher.name,
     });
 
   const generalBroadcastMessage = personalizeWhatsAppMessage(messageTemplate, {
     name: 'Siswa/i',
     className: targetClassId === 'all' ? 'Semua Kelas' : getClassName(targetClassId),
-    subject: teacher.subject,
+    subject: activeContextSubject,
     teacherName: teacher.name,
   });
 
@@ -190,8 +198,9 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({ prefill, onClearPrefil
     if (!mat) return;
     setFilterMode('all');
     if (mat.classId !== 'all') setTargetClassId(mat.classId);
+    const subjLabel = mat.subject?.trim() || defaultSubject;
     setMessageTemplate(
-      `Halo {nama} ({kelas}),\n\nMateri baru mata pelajaran *${teacher.subject}* telah dibagikan:\n*${mat.title}*\n\n${mat.content}${
+      `Halo {nama} ({kelas}),\n\nMateri baru mata pelajaran *${subjLabel}* telah dibagikan:\n*${mat.title}*\n\n${mat.content}${
         mat.linkUrl ? `\n\nTautan referensi: ${mat.linkUrl}` : ''
       }\n\nSilakan buka GuruMapel LMS untuk membaca materi dan mengunduh lampirannya.\nSalam,\n${teacher.name}`
     );
@@ -203,14 +212,15 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({ prefill, onClearPrefil
     if (!task) return;
     if (task.classId !== 'all') setTargetClassId(task.classId);
     setFilterMode(reminderMode ? 'unsubmitted' : 'all');
+    const subjLabel = task.subject?.trim() || defaultSubject;
 
     if (reminderMode) {
       setMessageTemplate(
-        `Halo {nama} ({kelas}),\n\nPengingat tugas *${teacher.subject}*:\n*${task.title}*\nBatas pengumpulan: *${task.dueDate}*\n\nTercatat Anda belum mengumpulkan tugas ini di GuruMapel LMS. Mohon segera diselesaikan dan dikumpulkan tepat waktu ya.\nTerima kasih,\n${teacher.name}`
+        `Halo {nama} ({kelas}),\n\nPengingat tugas *${subjLabel}*:\n*${task.title}*\nBatas pengumpulan: *${task.dueDate}*\n\nTercatat Anda belum mengumpulkan tugas ini di GuruMapel LMS. Mohon segera diselesaikan dan dikumpulkan tepat waktu ya.\nTerima kasih,\n${teacher.name}`
       );
     } else {
       setMessageTemplate(
-        `Halo {nama} ({kelas}),\n\nAda tugas baru mata pelajaran *${teacher.subject}*:\n*${task.title}*\nTenggat: *${task.dueDate}*\n\nInstruksi:\n${task.instructions}\n\nSilakan kerjakan dan kumpulkan melalui GuruMapel LMS.\nSalam,\n${teacher.name}`
+        `Halo {nama} ({kelas}),\n\nAda tugas baru mata pelajaran *${subjLabel}*:\n*${task.title}*\nTenggat: *${task.dueDate}*\n\nInstruksi:\n${task.instructions}\n\nSilakan kerjakan dan kumpulkan melalui GuruMapel LMS.\nSalam,\n${teacher.name}`
       );
     }
   };

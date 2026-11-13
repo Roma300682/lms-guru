@@ -14,6 +14,8 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
     viewMode,
     setViewMode,
     teacher,
+    teacherSubjects,
+    activeSubject,
     authSession,
     isCloudAdmin,
     isCloudConnected,
@@ -21,6 +23,13 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
     students,
     currentStudentId,
   } = useLMS();
+
+  const subjectSummary =
+    activeSubject !== 'all'
+      ? activeSubject
+      : teacherSubjects.length > 0
+      ? teacherSubjects.join(' · ')
+      : teacher.subject;
 
   const currentStudent = students.find((s) => s.id === currentStudentId);
   const canAccessTeacherView = authSession?.role === 'teacher' && isCloudAdmin && isCloudConnected;
@@ -85,8 +94,8 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
             <span className="text-sm sm:text-base font-bold tracking-tight text-slate-900 block leading-tight">
               GuruMapel
             </span>
-            <span className="text-[11px] sm:text-xs text-slate-500 block truncate max-w-[110px] sm:max-w-[160px]">
-              {teacher.subject}
+            <span className="text-[11px] sm:text-xs text-slate-500 block truncate max-w-[110px] sm:max-w-[180px]">
+              {subjectSummary}
             </span>
           </div>
         </div>
@@ -118,7 +127,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
               Siswa: {currentStudent ? currentStudent.name : 'Siswa'}
             </span>
             <span aria-hidden="true" className="hidden sm:inline">·</span>
-            <span className="hidden sm:inline truncate">{teacher.subject}</span>
+            <span className="hidden sm:inline truncate max-w-[180px]">{subjectSummary}</span>
           </div>
         )}
 
@@ -128,12 +137,12 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
             <>
               <button
                 onClick={onOpenProfile}
-                className="flex items-center gap-1.5 p-1.5 md:px-3 md:py-1.5 text-xs text-slate-700 hover:text-slate-900 hover:bg-slate-50 rounded-lg border border-slate-200 transition-colors"
-                title="Panel Pengaturan Guru & Administrator"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 md:px-3 text-xs text-slate-700 hover:text-slate-900 hover:bg-slate-50 rounded-lg border border-slate-200 transition-colors"
+                title="Menu Admin & Pengaturan Guru"
               >
-                <ShieldCheck className="w-4 h-4 md:w-3.5 md:h-3.5 text-indigo-600" />
+                <ShieldCheck className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
                 <span className="hidden md:inline truncate max-w-[110px] font-medium">{teacher.name}</span>
-                <span className="hidden lg:inline text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-semibold uppercase">
+                <span className="text-[10px] bg-indigo-50 text-indigo-800 md:bg-slate-100 md:text-slate-700 px-1.5 py-0.5 rounded font-semibold uppercase">
                   Admin
                 </span>
               </button>

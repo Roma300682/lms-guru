@@ -59,7 +59,7 @@ service cloud.firestore {
       return data.keys().hasAll(['name', 'subject', 'kktp', 'visibility', 'ownerUid', 'updatedAt'])
         && data.keys().hasOnly(['name', 'subject', 'kktp', 'visibility', 'ownerUid', 'updatedAt'])
         && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
-        && data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 120
+        && data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 300
         && (data.kktp is int || data.kktp is float) && data.kktp >= 0 && data.kktp <= 100
         && data.visibility == 'classroom'
         && isValidId(data.ownerUid)
@@ -112,11 +112,12 @@ service cloud.firestore {
     function isValidMaterial(data) {
       return data.keys().hasAll(['title', 'content', 'classId', 'date', 'visibility', 'ownerUid', 'createdAt', 'updatedAt'])
         && data.keys().hasOnly([
-          'title', 'content', 'linkUrl',
+          'title', 'subject', 'content', 'linkUrl',
           'attachmentName', 'attachmentSize', 'attachmentType', 'attachmentDataUrl',
           'classId', 'date', 'visibility', 'ownerUid', 'createdAt', 'updatedAt'
         ])
         && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && (!('subject' in data) || (data.subject is string && data.subject.size() <= 120))
         && data.content is string && data.content.size() <= 20000
         && (!('linkUrl' in data) || (data.linkUrl is string && data.linkUrl.size() <= 500))
         && (!('attachmentName' in data) || (data.attachmentName is string && data.attachmentName.size() <= 200))
@@ -134,11 +135,12 @@ service cloud.firestore {
     function isValidTask(data) {
       return data.keys().hasAll(['title', 'instructions', 'dueDate', 'classId', 'createdAtStr', 'visibility', 'ownerUid', 'createdAt', 'updatedAt'])
         && data.keys().hasOnly([
-          'title', 'instructions', 'dueDate', 'classId', 'createdAtStr',
+          'title', 'subject', 'instructions', 'dueDate', 'classId', 'createdAtStr',
           'attachmentName', 'attachmentSize', 'attachmentType', 'attachmentDataUrl',
           'visibility', 'ownerUid', 'createdAt', 'updatedAt'
         ])
         && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && (!('subject' in data) || (data.subject is string && data.subject.size() <= 120))
         && data.instructions is string && data.instructions.size() <= 30000
         && data.dueDate is string && data.dueDate.size() <= 30
         && isValidId(data.classId)
@@ -176,9 +178,10 @@ service cloud.firestore {
 
     function isValidAttendance(data) {
       return data.keys().hasAll(['date', 'classId', 'topic', 'records', 'visibility', 'ownerUid', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['date', 'classId', 'topic', 'records', 'visibility', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['date', 'classId', 'subject', 'topic', 'records', 'visibility', 'ownerUid', 'createdAt', 'updatedAt'])
         && data.date is string && data.date.size() <= 30
         && isValidId(data.classId)
+        && (!('subject' in data) || (data.subject is string && data.subject.size() <= 120))
         && data.topic is string && data.topic.size() >= 1 && data.topic.size() <= 200
         && data.records is map && data.records.size() <= 150
         && data.visibility == 'classroom'
@@ -339,7 +342,7 @@ service cloud.firestore {
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time
         && diffKeys().hasOnly([
-          'title', 'content', 'linkUrl',
+          'title', 'subject', 'content', 'linkUrl',
           'attachmentName', 'attachmentSize', 'attachmentType', 'attachmentDataUrl',
           'classId', 'date', 'visibility', 'updatedAt'
         ]);
@@ -361,7 +364,7 @@ service cloud.firestore {
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time
         && diffKeys().hasOnly([
-          'title', 'instructions', 'dueDate', 'classId', 'createdAtStr',
+          'title', 'subject', 'instructions', 'dueDate', 'classId', 'createdAtStr',
           'attachmentName', 'attachmentSize', 'attachmentType', 'attachmentDataUrl',
           'visibility', 'updatedAt'
         ]);
@@ -418,7 +421,7 @@ service cloud.firestore {
         && incoming().ownerUid == existing().ownerUid
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time
-        && diffKeys().hasOnly(['date', 'classId', 'topic', 'records', 'visibility', 'updatedAt']);
+        && diffKeys().hasOnly(['date', 'classId', 'subject', 'topic', 'records', 'visibility', 'updatedAt']);
       allow delete: if isValidId(attendanceId) && isAdmin();
     }
 

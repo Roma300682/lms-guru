@@ -25,6 +25,7 @@ export interface MaterialAttachment {
 export interface Material {
   id: string;
   title: string;
+  subject?: string; // Mata pelajaran materi (bebas)
   content: string; // Teks rangkuman materi
   linkUrl?: string; // Link referensi (YouTube / Drive / Web)
   attachment?: MaterialAttachment; // Dokumen Word (.doc, .docx), Excel (.xls, .xlsx), atau PDF
@@ -47,6 +48,7 @@ export interface Submission {
 export interface Task {
   id: string;
   title: string;
+  subject?: string; // Mata pelajaran tugas (bebas)
   instructions: string;
   dueDate: string;
   classId: string; // 'all' atau ID kelas
@@ -58,13 +60,14 @@ export interface AttendanceRecord {
   id: string;
   date: string;
   classId: string;
+  subject?: string; // Mata pelajaran pertemuan (bebas)
   topic: string;
   records: Record<string, AttendanceStatus>; // studentId -> 'H'|'S'|'I'|'A'
 }
 
 export interface TeacherProfile {
   name: string;
-  subject: string; // Mata pelajaran (misal: "Biologi")
+  subject: string; // Daftar mata pelajaran (bisa lebih dari satu, pisahkan dengan koma)
   pin: string; // PIN masuk guru / admin (default "1234")
   nip?: string; // NIP Guru (opsional)
   kktp?: number; // Kriteria Ketuntasan Minimal / KKTP (default 75)

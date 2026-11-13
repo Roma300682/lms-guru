@@ -5,27 +5,35 @@ import { FileAttachmentBadge } from '../FileAttachmentBadge';
 import { WhatsAppPrefill } from '../../types/lms';
 import { Plus, BookOpen, ExternalLink, Trash2, Search, MessageCircle } from 'lucide-react';
 
+import { getPrimarySubject } from '../../utils/subjects';
+
 interface MateriTabProps {
   onShareToWhatsApp?: (prefill: WhatsAppPrefill) => void;
 }
 
 export const MateriTab: React.FC<MateriTabProps> = ({ onShareToWhatsApp }) => {
-  const { materials, deleteMaterial, activeClassId, setActiveClassId, classes, teacher } = useLMS();
+  const { materials, deleteMaterial, activeClassId, setActiveClassId, activeSubject, setActiveSubject, classes, teacher } = useLMS();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Filter materials based on active class
-  const filteredByClass = materials.filter((m) => {
-    if (activeClassId === 'all') return true;
-    return m.classId === 'all' || m.classId === activeClassId;
+  const fallbackSubject = getPrimarySubject(teacher.subject);
+
+  // Filter materials based on active class and active subject
+  const filteredByClassAndSubject = materials.filter((m) => {
+    const classMatch = activeClassId === 'all' || m.classId === 'all' || m.classId === activeClassId;
+    const itemSubject = m.subject?.trim() || fallbackSubject;
+    const subjectMatch =
+      activeSubject === 'all' || itemSubject.toLowerCase() === activeSubject.toLowerCase();
+    return classMatch && subjectMatch;
   });
 
   // Filter by search query
-  const displayedMaterials = filteredByClass.filter((m) => {
+  const displayedMaterials = filteredByClassAndSubject.filter((m) => {
     const q = searchQuery.toLowerCase();
     return (
       m.title.toLowerCase().includes(q) ||
       m.content.toLowerCase().includes(q) ||
+      (m.subject || '').toLowerCase().includes(q) ||
       m.attachment?.name.toLowerCase().includes(q)
     );
   });
@@ -78,28 +86,32 @@ export const MateriTab: React.FC<MateriTabProps> = ({ onShareToWhatsApp }) => {
 
       {/* Materials List */}
       {displayedMaterials.length === 0 ? (
-        materials.length > 0 && activeClassId !== 'all' ? (
-          /* Empty for current class, but exists in other classes */
+        materials.length > 0 && (activeClassId !== 'all' || activeSubject !== 'all') ? (
+          /* Empty for current filter, but exists in other classes/subjects */
           <div className="bg-white rounded-xl border border-slate-200 p-10 text-center space-y-3">
             <BookOpen className="w-8 h-8 text-slate-300 mx-auto" />
             <h3 className="text-sm font-semibold text-slate-800">
-              Belum ada materi untuk {getClassName(activeClassId)}
+              Belum ada materi untuk filter {getClassName(activeClassId)}
+              {activeSubject !== 'all' ? ` · ${activeSubject}` : ''}
             </h3>
             <p className="text-xs text-slate-500 max-w-md mx-auto">
-              Terdapat <strong>{materials.length}</strong> bahan ajar yang terdaftar di kelas lain. Klik tombol di bawah untuk melihat semua materi.
+              Terdapat <strong>{materials.length}</strong> bahan ajar yang terdaftar di kelas atau mata pelajaran lain.
             </p>
-            <div className="flex items-center justify-center gap-2 pt-1">
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
               <button
-                onClick={() => setActiveClassId('all')}
+                onClick={() => {
+                  setActiveClassId('all');
+                  setActiveSubject('all');
+                }}
                 className="px-3.5 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors"
               >
-                Tampilkan Semua Kelas ({materials.length} Bahan Ajar)
+                Tampilkan Semua Kelas &amp; Mapel ({materials.length})
               </button>
               <button
                 onClick={() => setIsModalOpen(true)}
                 className="px-3.5 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-xs transition-colors"
               >
-                + Tambah Materi untuk {getClassName(activeClassId)}
+                + Tambah Materi Baru
               </button>
             </div>
           </div>
@@ -135,9 +147,12 @@ export const MateriTab: React.FC<MateriTabProps> = ({ onShareToWhatsApp }) => {
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-1">
-                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
                     <span className="font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
                       {getClassName(mat.classId)}
+                    </span>
+                    <span className="font-medium text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      {mat.subject || fallbackSubject}
                     </span>
                     <span aria-hidden="true">·</span>
                     <span>{mat.date}</span>
@@ -151,7 +166,7 @@ export const MateriTab: React.FC<MateriTabProps> = ({ onShareToWhatsApp }) => {
                       onClick={() =>
                         onShareToWhatsApp({
                           classId: mat.classId,
-                          message: `Halo {nama} ({kelas}),\n\nMateri baru mata pelajaran *${teacher.subject}* telah dibagikan:\n*${mat.title}*\n\n${mat.content}${
+                          message: `Halo {nama} ({kelas}),\n\nMateri baru mata pelajaran *${mat.subject || fallbackSubject}* telah dibagikan:\n*${mat.title}*\n\n${mat.content}${
                             mat.linkUrl ? `\n\nTautan referensi: ${mat.linkUrl}` : ''
                           }\n\nSilakan cek di GuruMapel LMS. Terima kasih,\n${teacher.name}`,
                         })

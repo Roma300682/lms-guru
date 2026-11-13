@@ -10,9 +10,12 @@ interface AddTaskModalProps {
 }
 
 export const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose }) => {
-  const { classes, addTask, activeClassId, setActiveClassId } = useLMS();
+  const { classes, addTask, activeClassId, setActiveClassId, activeSubject, availableSubjects, teacherSubjects } = useLMS();
 
   const [title, setTitle] = useState('');
+  const [subject, setSubject] = useState(
+    activeSubject !== 'all' ? activeSubject : (teacherSubjects[0] || '')
+  );
   const [instructions, setInstructions] = useState('');
   const [dueDate, setDueDate] = useState(() => {
     const nextWeek = new Date();
@@ -31,7 +34,7 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose }) =
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync targetClass whenever modal opens
+  // Sync targetClass & default subject whenever modal opens
   React.useEffect(() => {
     if (isOpen) {
       if (activeClassId && activeClassId !== 'all' && classes.some((c) => c.id === activeClassId)) {
@@ -39,8 +42,9 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose }) =
       } else {
         setTargetClass('all');
       }
+      setSubject(activeSubject !== 'all' ? activeSubject : (teacherSubjects[0] || ''));
     }
-  }, [isOpen, activeClassId, classes]);
+  }, [isOpen, activeClassId, classes, activeSubject, teacherSubjects]);
 
   if (!isOpen) return null;
 
@@ -103,6 +107,7 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose }) =
 
     addTask({
       title: title.trim(),
+      subject: subject.trim() || undefined,
       instructions: instructions.trim() || (attachment ? `Kerjakan soal yang terlampir pada berkas ${attachment.name}` : ''),
       dueDate,
       classId: targetClass,
@@ -189,6 +194,39 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose }) =
                 ))}
               </select>
             </div>
+          </div>
+
+          {/* Mata Pelajaran (Bebas) */}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold text-slate-700">
+              Mata Pelajaran (Bebas)
+            </label>
+            <input
+              type="text"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="Misal: Biologi, Matematika, Informatika..."
+              className="w-full text-sm px-3.5 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+            />
+            {availableSubjects.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] text-slate-500">Pilih cepat:</span>
+                {availableSubjects.map((subj) => (
+                  <button
+                    key={subj}
+                    type="button"
+                    onClick={() => setSubject(subj)}
+                    className={`px-2 py-0.5 text-[11px] font-medium rounded-md border transition-colors ${
+                      subject.trim().toLowerCase() === subj.toLowerCase()
+                        ? 'bg-indigo-50 text-indigo-700 border-indigo-200 font-semibold'
+                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {subj}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Upload File Soal / LKPD */}

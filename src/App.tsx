@@ -76,6 +76,7 @@ const MainContent: React.FC = () => {
           <TeacherProfileModal
             isOpen={isProfileModalOpen}
             onClose={() => setIsProfileModalOpen(false)}
+            onOpenDeployGuide={handleOpenDeployGuide}
           />
 
           <DeployGuideModal

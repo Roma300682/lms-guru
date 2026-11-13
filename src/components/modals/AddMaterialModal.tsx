@@ -10,9 +10,12 @@ interface AddMaterialModalProps {
 }
 
 export const AddMaterialModal: React.FC<AddMaterialModalProps> = ({ isOpen, onClose }) => {
-  const { classes, addMaterial, activeClassId, setActiveClassId } = useLMS();
+  const { classes, addMaterial, activeClassId, setActiveClassId, activeSubject, availableSubjects, teacherSubjects } = useLMS();
+
+  const defaultSubject = activeSubject !== 'all' ? activeSubject : (teacherSubjects[0] || '');
 
   const [title, setTitle] = useState('');
+  const [subject, setSubject] = useState(defaultSubject);
   const [content, setContent] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
   const [targetClass, setTargetClass] = useState(() =>
@@ -27,7 +30,7 @@ export const AddMaterialModal: React.FC<AddMaterialModalProps> = ({ isOpen, onCl
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync targetClass whenever modal opens
+  // Sync targetClass & default subject whenever modal opens
   React.useEffect(() => {
     if (isOpen) {
       if (activeClassId && activeClassId !== 'all' && classes.some((c) => c.id === activeClassId)) {
@@ -35,8 +38,9 @@ export const AddMaterialModal: React.FC<AddMaterialModalProps> = ({ isOpen, onCl
       } else {
         setTargetClass('all');
       }
+      setSubject(activeSubject !== 'all' ? activeSubject : (teacherSubjects[0] || ''));
     }
-  }, [isOpen, activeClassId, classes]);
+  }, [isOpen, activeClassId, classes, activeSubject, teacherSubjects]);
 
   if (!isOpen) return null;
 
@@ -99,6 +103,7 @@ export const AddMaterialModal: React.FC<AddMaterialModalProps> = ({ isOpen, onCl
 
     addMaterial({
       title: title.trim(),
+      subject: subject.trim() || undefined,
       content: content.trim() || (attachment ? `Materi terlampir dalam file ${attachment.name}` : ''),
       linkUrl: linkUrl.trim() || undefined,
       attachment: attachment || undefined,
@@ -155,24 +160,60 @@ export const AddMaterialModal: React.FC<AddMaterialModalProps> = ({ isOpen, onCl
             />
           </div>
 
-          {/* Untuk Kelas */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Untuk Kelas Target
-            </label>
-            <select
-              value={targetClass}
-              onChange={(e) => setTargetClass(e.target.value)}
-              className="w-full text-sm px-3.5 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 bg-white"
-            >
-              <option value="all">Semua Kelas yang Diampu</option>
-              {classes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Untuk Kelas */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Untuk Kelas Target
+              </label>
+              <select
+                value={targetClass}
+                onChange={(e) => setTargetClass(e.target.value)}
+                className="w-full text-sm px-3.5 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 bg-white"
+              >
+                <option value="all">Semua Kelas yang Diampu</option>
+                {classes.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Mata Pelajaran (Bebas) */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Mata Pelajaran (Bebas)
+              </label>
+              <input
+                type="text"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                placeholder="Misal: Biologi, Matematika, dll."
+                className="w-full text-sm px-3.5 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
           </div>
+
+          {availableSubjects.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 -mt-1">
+              <span className="text-[11px] text-slate-500">Pilih cepat:</span>
+              {availableSubjects.map((subj) => (
+                <button
+                  key={subj}
+                  type="button"
+                  onClick={() => setSubject(subj)}
+                  className={`px-2 py-0.5 text-[11px] font-medium rounded-md border transition-colors ${
+                    subject.trim().toLowerCase() === subj.toLowerCase()
+                      ? 'bg-indigo-50 text-indigo-700 border-indigo-200 font-semibold'
+                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  {subj}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Upload File Dokumen (Word, Excel, PDF) */}
           <div className="space-y-1.5">

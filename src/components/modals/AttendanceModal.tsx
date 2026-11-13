@@ -9,14 +9,23 @@ interface AttendanceModalProps {
 }
 
 export const AttendanceModal: React.FC<AttendanceModalProps> = ({ isOpen, onClose }) => {
-  const { classes, students, activeClassId, saveAttendance } = useLMS();
+  const { classes, students, activeClassId, activeSubject, availableSubjects, teacherSubjects, saveAttendance } = useLMS();
 
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [classId, setClassId] = useState(activeClassId === 'all' ? classes[0]?.id || 'c1' : activeClassId);
+  const [subject, setSubject] = useState(
+    activeSubject !== 'all' ? activeSubject : (teacherSubjects[0] || '')
+  );
   const [topic, setTopic] = useState('');
 
   // Local state for student attendance
   const [statuses, setStatuses] = useState<Record<string, AttendanceStatus>>({});
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setSubject(activeSubject !== 'all' ? activeSubject : (teacherSubjects[0] || ''));
+    }
+  }, [isOpen, activeSubject, teacherSubjects]);
 
   if (!isOpen) return null;
 
@@ -49,7 +58,7 @@ export const AttendanceModal: React.FC<AttendanceModalProps> = ({ isOpen, onClos
       finalRecords[s.id] = statuses[s.id] || 'H';
     });
 
-    saveAttendance(date, classId, topic || `Pertemuan Tanggal ${date}`, finalRecords);
+    saveAttendance(date, classId, topic || `Pertemuan Tanggal ${date}`, finalRecords, subject.trim() || undefined);
     onClose();
   };
 
@@ -120,17 +129,50 @@ export const AttendanceModal: React.FC<AttendanceModalProps> = ({ isOpen, onClos
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">
-                Topik / Materi yang Diajarkan
-              </label>
-              <input
-                type="text"
-                value={topic}
-                onChange={(e) => setTopic(e.target.value)}
-                placeholder="Misal: Pertemuan 3: Pembelahan Sel Mitosis & Meiosis"
-                className="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">
+                  Mata Pelajaran (Bebas)
+                </label>
+                <input
+                  type="text"
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  placeholder="Misal: Biologi, Kimia, dll."
+                  className="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                />
+                {availableSubjects.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {availableSubjects.map((subj) => (
+                      <button
+                        key={subj}
+                        type="button"
+                        onClick={() => setSubject(subj)}
+                        className={`px-2 py-0.5 text-[10px] font-medium rounded border transition-colors ${
+                          subject.trim().toLowerCase() === subj.toLowerCase()
+                            ? 'bg-indigo-50 text-indigo-700 border-indigo-200 font-semibold'
+                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {subj}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">
+                  Topik / Materi yang Diajarkan
+                </label>
+                <input
+                  type="text"
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  placeholder="Misal: Pertemuan 3: Pembelahan Sel"
+                  className="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
             </div>
 
             <div className="flex items-center justify-between pt-1">

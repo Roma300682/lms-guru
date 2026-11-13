@@ -73,25 +73,73 @@ export const LoginPage: React.FC = () => {
     }
   }, [isCloudConnected, isCloudAdmin, role, cloudAuthError]);
 
-  // Student login state
-  const [selectedClassId, setSelectedClassId] = useState<string>(classes[0]?.id || '');
-  const [selectedStudentId, setSelectedStudentId] = useState<string>('');
+  // Student login state (persisted in sessionStorage across Google redirect/popup)
+  const readStudentDraft = (): { classId?: string; studentId?: string; whatsapp?: string } => {
+    try {
+      const raw = sessionStorage.getItem('gm_student_login_draft');
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  };
+
+  const initialDraft = readStudentDraft();
+  const hasEditedWaRef = useRef<boolean>(Boolean(initialDraft.whatsapp?.trim()));
+
+  const [selectedClassId, setSelectedClassId] = useState<string>(
+    initialDraft.classId || classes[0]?.id || ''
+  );
+  const [selectedStudentId, setSelectedStudentId] = useState<string>(
+    initialDraft.studentId || ''
+  );
   const [studentWhatsapp, setStudentWhatsapp] = useState<string>(() => {
-    const first = students.find((s) => s.classId === (classes[0]?.id || ''));
-    return first?.whatsapp || '';
+    if (initialDraft.whatsapp) return initialDraft.whatsapp;
+    const initClass = initialDraft.classId || classes[0]?.id || '';
+    const initStu = initialDraft.studentId
+      ? students.find((s) => s.id === initialDraft.studentId)
+      : students.find((s) => s.classId === initClass);
+    return initStu?.whatsapp || '';
   });
   const [studentWaError, setStudentWaError] = useState('');
+
+  const saveStudentDraft = (classId: string, studentId: string, whatsapp: string) => {
+    try {
+      sessionStorage.setItem(
+        'gm_student_login_draft',
+        JSON.stringify({ classId, studentId, whatsapp })
+      );
+    } catch {
+      // ignore sessionStorage error
+    }
+  };
 
   const effectiveClassId = classes.some((c) => c.id === selectedClassId)
     ? selectedClassId
     : classes[0]?.id || '';
 
   const classStudents = students.filter((s) => s.classId === effectiveClassId);
+  const effectiveStudentId = classStudents.some((s) => s.id === selectedStudentId)
+    ? selectedStudentId
+    : classStudents[0]?.id || '';
 
-  const syncStudentWhatsapp = (studentId: string) => {
+  // Keep draft WA intact when Cloud data syncs after Google login
+  useEffect(() => {
+    if (!hasEditedWaRef.current && effectiveStudentId) {
+      const found = students.find((s) => s.id === effectiveStudentId);
+      if (found?.whatsapp) {
+        setStudentWhatsapp(found.whatsapp);
+      }
+    }
+  }, [isCloudConnected, students, effectiveStudentId]);
+
+  const syncStudentWhatsapp = (studentId: string, nextClassId = effectiveClassId) => {
     const found = students.find((s) => s.id === studentId);
-    setStudentWhatsapp(found?.whatsapp || '');
+    const nextWa = hasEditedWaRef.current ? studentWhatsapp : found?.whatsapp || '';
+    if (!hasEditedWaRef.current) {
+      setStudentWhatsapp(nextWa);
+    }
     setStudentWaError('');
+    saveStudentDraft(nextClassId, studentId, nextWa);
   };
 
   // Set default student when class changes
@@ -100,7 +148,7 @@ export const LoginPage: React.FC = () => {
     const firstStudentInClass = students.find((s) => s.classId === newClassId);
     const nextId = firstStudentInClass?.id || '';
     setSelectedStudentId(nextId);
-    syncStudentWhatsapp(nextId);
+    syncStudentWhatsapp(nextId, newClassId);
   };
 
   const handleTeacherGoogleLogin = async () => {
@@ -113,7 +161,19 @@ export const LoginPage: React.FC = () => {
     }
   };
 
+  const validateAndPersistPreGoogleDraft = (): boolean => {
+    setStudentWaError('');
+    const trimmedWa = studentWhatsapp.trim();
+    if (trimmedWa && !normalizeWhatsAppNumber(trimmedWa)) {
+      setStudentWaError('Format nomor HP / WhatsApp tidak valid. Contoh: 081234567890');
+      return false;
+    }
+    saveStudentDraft(effectiveClassId, effectiveStudentId, studentWhatsapp);
+    return true;
+  };
+
   const handleStudentGoogleConnect = async () => {
+    if (!validateAndPersistPreGoogleDraft()) return;
     clearCloudAuthError();
     setIsGoogleLoading(true);
     try {
@@ -123,18 +183,28 @@ export const LoginPage: React.FC = () => {
     }
   };
 
+  const handleStudentGoogleRedirect = async () => {
+    if (!validateAndPersistPreGoogleDraft()) return;
+    await loginWithGoogleRedirect('student');
+  };
+
   const handleStudentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setStudentWaError('');
-    const studentToLogin = selectedStudentId || classStudents[0]?.id;
+    const studentToLogin = effectiveStudentId;
     if (!studentToLogin) return;
 
     const trimmedWa = studentWhatsapp.trim();
     if (trimmedWa && !normalizeWhatsAppNumber(trimmedWa)) {
-      setStudentWaError('Format nomor WhatsApp tidak valid. Contoh: 081234567890');
+      setStudentWaError('Format nomor HP / WhatsApp tidak valid. Contoh: 081234567890');
       return;
     }
 
+    try {
+      sessionStorage.removeItem('gm_student_login_draft');
+    } catch {
+      // ignore
+    }
     loginAsStudent(studentToLogin, trimmedWa || undefined);
   };
 
@@ -178,9 +248,9 @@ export const LoginPage: React.FC = () => {
             onClick={() => {
               switchRoleTab('student');
               clearCloudAuthError();
-              const activeStudentId = selectedStudentId || classStudents[0]?.id || '';
-              if (!selectedStudentId && classStudents[0]) {
-                setSelectedStudentId(classStudents[0].id);
+              const activeStudentId = effectiveStudentId;
+              if (!selectedStudentId && activeStudentId) {
+                setSelectedStudentId(activeStudentId);
               }
               if (activeStudentId) {
                 syncStudentWhatsapp(activeStudentId);
@@ -329,55 +399,7 @@ export const LoginPage: React.FC = () => {
             </div>
           ) : (
             <div className="space-y-4">
-              {!isCloudConnected ? (
-                <div className="p-4 rounded-xl bg-emerald-50/80 border border-emerald-200 space-y-3">
-                  <div className="space-y-1">
-                    <div className="text-xs text-emerald-950 font-bold">
-                      1. Hubungkan Akun Google Siswa Terlebih Dahulu
-                    </div>
-                    <p className="text-[11px] text-emerald-800 leading-relaxed">
-                      Wajib login Google agar daftar kelas, nama siswa, materi, tugas, nomor WhatsApp, dan nilai langsung tersinkron dengan Guru.
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <button
-                      type="button"
-                      disabled={isGoogleLoading}
-                      onClick={handleStudentGoogleConnect}
-                      className="w-full flex items-center justify-center gap-2 py-2.5 px-3 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-800 disabled:bg-emerald-400 rounded-lg transition-colors shadow-xs"
-                    >
-                      {isGoogleLoading ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          <span>Menghubungkan...</span>
-                        </>
-                      ) : (
-                        <>
-                          <LogIn className="w-3.5 h-3.5" />
-                          <span>Hubungkan Google Sekarang</span>
-                        </>
-                      )}
-                    </button>
-
-                    {!isInIframe && (
-                      <button
-                        type="button"
-                        disabled={isGoogleLoading}
-                        onClick={() => void loginWithGoogleRedirect('student')}
-                        className="w-full flex items-center justify-center gap-1.5 py-2 px-3 text-[11px] font-semibold text-emerald-900 bg-white hover:bg-emerald-100/60 border border-emerald-300 rounded-lg transition-colors"
-                      >
-                        <LogIn className="w-3.5 h-3.5" />
-                        <span>Login Google Alternatif (Jika Pop-up HP Diblokir)</span>
-                      </button>
-                    )}
-                  </div>
-
-                  <p className="text-[10px] text-emerald-900/80 bg-white/70 border border-emerald-200/70 rounded-lg px-2.5 py-1.5 leading-relaxed">
-                    <strong>Buka dari WhatsApp?</strong> Jika tombol Google gagal di browser dalam WhatsApp, ketuk menu <strong>⋮</strong> (pojok kanan atas) lalu pilih <strong>Buka di Chrome / Browser</strong>.
-                  </p>
-                </div>
-              ) : (
+              {isCloudConnected ? (
                 <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 flex items-center justify-between gap-2">
                   <span className="truncate font-medium">
                     Terhubung Cloud: {firebaseUser?.email}
@@ -390,105 +412,59 @@ export const LoginPage: React.FC = () => {
                     Ganti Akun
                   </button>
                 </div>
-              )}
-
-              {cloudAuthError && (
-                <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-3 space-y-2">
-                  <div className="flex items-start gap-1.5">
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
-                    <span>{cloudAuthError}</span>
-                  </div>
-                  <div className="flex flex-wrap gap-2 pt-0.5">
-                    {cloudAuthErrorCode === 'auth/unauthorized-domain' ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={handleCopyHost}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-slate-800 bg-white border border-rose-200 hover:bg-slate-50 rounded-lg transition-colors"
-                        >
-                          {copiedHost ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                          <span>{copiedHost ? 'Domain Tersalin!' : `Salin: ${currentHost}`}</span>
-                        </button>
-                        <a
-                          href={firebaseAuthSettingsUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg transition-colors"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5" />
-                          <span>Buka Authorized Domains Firebase</span>
-                        </a>
-                      </>
-                    ) : isInIframe ? (
-                      <a
-                        href={typeof window !== 'undefined' ? window.location.href : '#'}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg transition-colors"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        <span>Buka di Tab Browser Baru</span>
-                      </a>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => void loginWithGoogleRedirect('student')}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg transition-colors"
-                      >
-                        <LogIn className="w-3.5 h-3.5" />
-                        <span>Hubungkan Google Tanpa Pop-up (Redirect)</span>
-                      </button>
-                    )}
-                  </div>
+              ) : (
+                <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200 text-[11px] text-emerald-900 space-y-1 leading-relaxed">
+                  <span className="font-bold text-emerald-950 block">
+                    Masuk Siswa Tanpa Wajib Login Google
+                  </span>
+                  <span>
+                    Pilih kelas, pilih nama Anda, dan isi No. HP aktif lalu langsung masuk ke Ruang Belajar Siswa.
+                  </span>
                 </div>
               )}
 
-              {isCloudConnected && (
-                classes.length === 0 ? (
-                  <div className="space-y-3 py-1">
-                    <div className="bg-amber-50 border border-amber-200 text-amber-800 p-3.5 rounded-xl text-xs">
-                      <span className="font-semibold block mb-1">Belum Ada Kelas Terdaftar</span>
-                      Guru belum menambahkan rombel kelas atau mengunggah data siswa ke Database Cloud. Minta guru untuk masuk lewat tab <strong>Guru &amp; Admin</strong> terlebih dahulu.
-                    </div>
+              <form onSubmit={handleStudentSubmit} className="space-y-3.5">
+                {classes.length === 0 ? (
+                  <div className="bg-amber-50 border border-amber-200 text-amber-800 p-3.5 rounded-xl text-xs">
+                    <span className="font-semibold block mb-1">Belum Ada Kelas Terdaftar</span>
+                    {isCloudConnected
+                      ? 'Guru belum menambahkan rombel kelas atau mengunggah data siswa ke Database Cloud.'
+                      : 'Daftar kelas belum tersedia di browser ini. Hubungkan Google di bawah jika guru membagikan data lewat Cloud.'}
                   </div>
                 ) : (
-                  <form onSubmit={handleStudentSubmit} className="space-y-4">
-                  <div className="text-xs text-slate-600">
-                    Pilih rombel kelas dan nama Anda untuk langsung masuk ke materi dan tugas:
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">
-                      Pilih Kelas Anda
-                    </label>
-                    <select
-                      value={effectiveClassId}
-                      onChange={(e) => handleClassChange(e.target.value)}
-                      className="w-full text-xs font-medium px-3 py-2.5 border border-slate-300 rounded-xl bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-                    >
-                      {classes.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {classStudents.length === 0 ? (
-                    <div className="text-xs text-amber-700 bg-amber-50 p-3 rounded-xl border border-amber-200">
-                      Belum ada siswa terdaftar di {classes.find((c) => c.id === effectiveClassId)?.name || 'kelas ini'}. Guru dapat mengunggah daftar siswa melalui Panel Guru &amp; Admin.
+                  <>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">
+                        Pilih Kelas Anda
+                      </label>
+                      <select
+                        value={effectiveClassId}
+                        onChange={(e) => handleClassChange(e.target.value)}
+                        className="w-full text-xs font-medium px-3 py-2.5 border border-slate-300 rounded-xl bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                      >
+                        {classes.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
                     </div>
-                  ) : (
-                    <div className="space-y-3">
+
+                    {classStudents.length === 0 ? (
+                      <div className="text-xs text-amber-700 bg-amber-50 p-3 rounded-xl border border-amber-200">
+                        Belum ada siswa terdaftar di {classes.find((c) => c.id === effectiveClassId)?.name || 'kelas ini'}.
+                      </div>
+                    ) : (
                       <div>
                         <label className="block text-xs font-medium text-slate-700 mb-1">
                           Pilih Nama Siswa ({classStudents.length} siswa terdaftar)
                         </label>
                         <select
-                          value={selectedStudentId || classStudents[0]?.id || ''}
+                          value={effectiveStudentId}
                           onChange={(e) => {
-                            setSelectedStudentId(e.target.value);
-                            syncStudentWhatsapp(e.target.value);
+                            const nextId = e.target.value;
+                            setSelectedStudentId(nextId);
+                            syncStudentWhatsapp(nextId);
                           }}
                           className="w-full text-xs font-medium px-3 py-2.5 border border-slate-300 rounded-xl bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
                         >
@@ -499,43 +475,49 @@ export const LoginPage: React.FC = () => {
                           ))}
                         </select>
                       </div>
+                    )}
+                  </>
+                )}
 
-                      <div>
-                        <label className="block text-xs font-medium text-slate-700 mb-1">
-                          No. WhatsApp Siswa / Orang Tua
-                        </label>
-                        <div className="relative">
-                          <input
-                            type="tel"
-                            value={studentWhatsapp}
-                            onChange={(e) => {
-                              setStudentWhatsapp(e.target.value);
-                              setStudentWaError('');
-                            }}
-                            placeholder="Contoh: 081234567890"
-                            className="w-full text-xs px-3.5 py-2.5 pl-9 border border-slate-300 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-emerald-500 font-mono"
-                          />
-                          <MessageCircle className="w-4 h-4 text-emerald-600 absolute left-3 top-2.5" />
-                        </div>
-                        {studentWaError ? (
-                          <p className="text-[11px] text-rose-600 mt-1 flex items-center gap-1">
-                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                            <span>{studentWaError}</span>
-                          </p>
-                        ) : (
-                          <p className="text-[11px] text-slate-500 mt-1">
-                            Tersimpan otomatis untuk menerima info materi &amp; tugas dari guru lewat WhatsApp.
-                          </p>
-                        )}
-                      </div>
-                    </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    No. HP / WhatsApp Aktif (Siswa / Orang Tua)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="tel"
+                      value={studentWhatsapp}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        hasEditedWaRef.current = val.trim().length > 0;
+                        setStudentWhatsapp(val);
+                        setStudentWaError('');
+                        saveStudentDraft(effectiveClassId, effectiveStudentId, val);
+                      }}
+                      placeholder="Contoh: 081234567890"
+                      className="w-full text-xs px-3.5 py-2.5 pl-9 border border-slate-300 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-emerald-500 font-mono"
+                    />
+                    <MessageCircle className="w-4 h-4 text-emerald-600 absolute left-3 top-2.5" />
+                  </div>
+                  {studentWaError ? (
+                    <p className="text-[11px] text-rose-600 mt-1 flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{studentWaError}</span>
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Tersimpan otomatis untuk menerima info materi &amp; tugas dari guru lewat WhatsApp.
+                    </p>
                   )}
+                </div>
 
+                {/* Primary Student Enter Button - No Google Required */}
+                <div className="space-y-2 pt-1">
                   <button
                     type="submit"
-                    disabled={classStudents.length === 0}
+                    disabled={classes.length === 0 || classStudents.length === 0}
                     className={`w-full flex items-center justify-center gap-2 py-2.5 text-xs font-semibold text-white rounded-xl transition-colors shadow-xs ${
-                      classStudents.length === 0
+                      classes.length === 0 || classStudents.length === 0
                         ? 'bg-slate-300 cursor-not-allowed'
                         : 'bg-emerald-700 hover:bg-emerald-800'
                     }`}
@@ -544,12 +526,104 @@ export const LoginPage: React.FC = () => {
                     <span>Masuk ke Ruang Belajar Siswa</span>
                   </button>
 
-                  <p className="text-[11px] text-slate-400 text-center pt-1">
-                    Pilih kelas dan nama Anda serta isi nomor WhatsApp aktif untuk mulai belajar.
+                  <p className="text-[11px] text-slate-400 text-center">
+                    Pastikan kelas, nama Anda, dan No. HP aktif sudah sesuai lalu klik tombol di atas.
                   </p>
-                </form>
-                )
-              )}
+                </div>
+
+                {cloudAuthError && (
+                  <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-3 space-y-2">
+                    <div className="flex items-start gap-1.5">
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
+                      <span>{cloudAuthError}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2 pt-0.5">
+                      {cloudAuthErrorCode === 'auth/unauthorized-domain' ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={handleCopyHost}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-slate-800 bg-white border border-rose-200 hover:bg-slate-50 rounded-lg transition-colors"
+                          >
+                            {copiedHost ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                            <span>{copiedHost ? 'Domain Tersalin!' : `Salin: ${currentHost}`}</span>
+                          </button>
+                          <a
+                            href={firebaseAuthSettingsUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg transition-colors"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span>Buka Authorized Domains Firebase</span>
+                          </a>
+                        </>
+                      ) : isInIframe ? (
+                        <a
+                          href={typeof window !== 'undefined' ? window.location.href : '#'}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg transition-colors"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>Buka di Tab Browser Baru</span>
+                        </a>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void handleStudentGoogleRedirect()}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg transition-colors"
+                        >
+                          <LogIn className="w-3.5 h-3.5" />
+                          <span>Hubungkan Google Tanpa Pop-up (Redirect)</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {!isCloudConnected && (
+                  <div className="pt-2 border-t border-slate-100 space-y-2">
+                    <div className="text-[11px] text-slate-500 leading-relaxed">
+                      <span className="font-semibold text-slate-700">Sinkron Cloud Guru (Opsional):</span>{' '}
+                      Tidak wajib. Hubungkan Google hanya jika ingin mengambil daftar kelas/materi terbaru dari HP lain atau mengirim tugas langsung ke Dashboard Guru.
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <button
+                        type="button"
+                        disabled={isGoogleLoading}
+                        onClick={handleStudentGoogleConnect}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 text-[11px] font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 disabled:opacity-60 rounded-xl transition-colors"
+                      >
+                        {isGoogleLoading ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span>Menghubungkan...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Cloud className="w-3.5 h-3.5" />
+                            <span>Hubungkan Google (Opsional)</span>
+                          </>
+                        )}
+                      </button>
+
+                      {!isInIframe && (
+                        <button
+                          type="button"
+                          disabled={isGoogleLoading}
+                          onClick={() => void handleStudentGoogleRedirect()}
+                          className="flex items-center justify-center gap-1.5 py-2 px-3 text-[11px] font-medium text-slate-600 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors"
+                        >
+                          <LogIn className="w-3.5 h-3.5" />
+                          <span>Alternatif Redirect</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </form>
             </div>
           )}
         </div>
