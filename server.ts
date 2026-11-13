@@ -331,6 +331,127 @@ ${uraianMateri.slice(0, 30000)}`;
     }
   });
 
+  app.post('/api/grade-cbt-essay', async (req: Request, res: Response) => {
+    const body = (req.body || {}) as {
+      subject?: unknown;
+      items?: unknown;
+    };
+    const subject = typeof body.subject === 'string' ? body.subject.trim() : 'Mata Pelajaran';
+    const rawItems = Array.isArray(body.items)
+      ? (body.items as Array<{ id?: unknown; question?: unknown; answerKey?: unknown; studentAnswer?: unknown }>).slice(0, 5)
+      : [];
+
+    if (rawItems.length === 0) {
+      res.status(400).json({ error: 'Daftar soal uraian kosong.' });
+      return;
+    }
+
+    const normalized = rawItems.map((it, idx) => ({
+      id: typeof it.id === 'string' && it.id.trim() ? it.id.trim() : `es_${idx}`,
+      question: typeof it.question === 'string' ? it.question.trim().slice(0, 1500) : '',
+      answerKey: typeof it.answerKey === 'string' ? it.answerKey.trim().slice(0, 1500) : '',
+      studentAnswer: typeof it.studentAnswer === 'string' ? it.studentAnswer.trim().slice(0, 3000) : '',
+    }));
+
+    const nonEmpty = normalized.filter((it) => it.studentAnswer.length > 0);
+    if (nonEmpty.length === 0) {
+      const perQuestionScores: Record<string, number> = {};
+      normalized.forEach((it) => {
+        perQuestionScores[it.id] = 0;
+      });
+      res.json({ essayScore: 0, perQuestionScores });
+      return;
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      res.status(503).json({ error: 'GEMINI_API_KEY belum tersedia di server.' });
+      return;
+    }
+
+    try {
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          },
+        },
+      });
+
+      const prompt = `Nilai jawaban uraian siswa untuk mata pelajaran "${subject}".
+Beri skor 0 sampai 100 untuk setiap ID soal berdasarkan kesesuaian konsep/makna jawaban siswa dengan kunci jawaban/rubrik.
+Aturan:
+- Jawaban kosong = 0.
+- Jawaban benar & lengkap sesuai konsep kunci = 85–100.
+- Jawaban benar sebagian atau kurang lengkap = 50–80.
+- Jawaban melenceng namun ada usaha relevan = 15–45.
+- Jangan menghukum perbedaan parafrase selama makna konsep benar.
+
+Data soal dan jawaban:
+${JSON.stringify(nonEmpty)}`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-4-hydrogen',
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              grades: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    id: { type: Type.STRING },
+                    score: { type: Type.INTEGER },
+                  },
+                  required: ['id', 'score'],
+                },
+              },
+            },
+            required: ['grades'],
+          },
+          thinkingConfig: {
+            thinkingLevel: ThinkingLevel.LOW,
+          },
+        },
+      });
+
+      const parsed = JSON.parse((response.text || '{}').trim()) as {
+        grades?: Array<{ id?: unknown; score?: unknown }>;
+      };
+
+      const perQuestionScores: Record<string, number> = {};
+      normalized.forEach((it) => {
+        perQuestionScores[it.id] = 0;
+      });
+
+      if (Array.isArray(parsed.grades)) {
+        parsed.grades.forEach((g) => {
+          if (typeof g.id === 'string' && g.id in perQuestionScores) {
+            const item = normalized.find((n) => n.id === g.id);
+            if (!item || !item.studentAnswer) {
+              perQuestionScores[g.id] = 0;
+            } else {
+              const rawNum = typeof g.score === 'number' ? Math.round(g.score) : 0;
+              perQuestionScores[g.id] = Math.min(100, Math.max(0, rawNum));
+            }
+          }
+        });
+      }
+
+      const total = normalized.reduce((acc, it) => acc + (perQuestionScores[it.id] ?? 0), 0);
+      const essayScore = Math.round(total / normalized.length);
+
+      res.json({ essayScore, perQuestionScores });
+    } catch (err) {
+      console.error('Error grading CBT essay:', err);
+      res.status(500).json({ error: 'Gagal menilai jawaban uraian dengan AI.' });
+    }
+  });
+
   app.get('/api/whatsapp/status', (_req: Request, res: Response) => {
     const token = process.env.WHATSAPP_TOKEN?.trim() || '';
     const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID?.trim() || '';
@@ -503,6 +624,10 @@ ${uraianMateri.slice(0, 30000)}`;
 
   app.all('/api/generate-questions', (_req: Request, res: Response) => {
     res.status(405).json({ error: 'Metode tidak diizinkan. Gunakan metode POST ke /api/generate-questions.' });
+  });
+
+  app.all('/api/grade-cbt-essay', (_req: Request, res: Response) => {
+    res.status(405).json({ error: 'Metode tidak diizinkan. Gunakan metode POST ke /api/grade-cbt-essay.' });
   });
 
   app.all('/api/whatsapp/broadcast', (_req: Request, res: Response) => {

@@ -20,6 +20,11 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { getPrimarySubject } from '../../utils/subjects';
+import {
+  computeFinalCbtScore,
+  resolveEssayWeight,
+  scoreSingleEssayDeterministic,
+} from '../../utils/cbtScoring';
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D'] as const;
 
@@ -103,12 +108,26 @@ export const CbtGuruTab: React.FC<CbtGuruTabProps> = ({ onNavigateToSoalAI }) =>
   // Detail & grading modal
   const [inspectAttempt, setInspectAttempt] = useState<CbtAttempt | null>(null);
   const [draftEssayScore, setDraftEssayScore] = useState<string>('');
+  const [draftPerEssayScores, setDraftPerEssayScores] = useState<Record<string, string>>({});
   const [draftFinalScore, setDraftFinalScore] = useState<string>('');
   const [draftTeacherNote, setDraftTeacherNote] = useState<string>('');
   const [gradeSavedBanner, setGradeSavedBanner] = useState<boolean>(false);
 
   const openInspectModal = (attempt: CbtAttempt) => {
     setInspectAttempt(attempt);
+    const initialPer: Record<string, string> = {};
+    if (selectedExam && selectedExam.essay.length > 0) {
+      selectedExam.essay.forEach((q) => {
+        if (typeof attempt.essayScore === 'number') {
+          initialPer[q.id] = String(
+            scoreSingleEssayDeterministic(attempt.essayAnswers[q.id] || '', q.answerKey || '')
+          );
+        } else {
+          initialPer[q.id] = '';
+        }
+      });
+    }
+    setDraftPerEssayScores(initialPer);
     setDraftEssayScore(
       typeof attempt.essayScore === 'number' ? String(attempt.essayScore) : ''
     );
@@ -200,12 +219,26 @@ export const CbtGuruTab: React.FC<CbtGuruTabProps> = ({ onNavigateToSoalAI }) =>
     if (!inspectAttempt || !selectedExam) return;
     if (val.trim() === '') return;
     const essayNum = Math.min(100, Math.max(0, Number(val) || 0));
-    if (selectedExam.multipleChoice.length === 0) {
-      setDraftFinalScore(String(Math.round(essayNum)));
-    } else {
-      const combined = Math.round(inspectAttempt.pgScore * 0.7 + essayNum * 0.3);
-      setDraftFinalScore(String(combined));
-    }
+    const combined = computeFinalCbtScore(
+      inspectAttempt.pgScore,
+      essayNum,
+      selectedExam.multipleChoice.length,
+      selectedExam.essay.length,
+      selectedExam.essayWeight
+    );
+    setDraftFinalScore(String(combined));
+  };
+
+  const handlePerEssayScoreChange = (qId: string, val: string) => {
+    const next = { ...draftPerEssayScores, [qId]: val };
+    setDraftPerEssayScores(next);
+    if (!selectedExam || selectedExam.essay.length === 0) return;
+    const nums = selectedExam.essay.map((q) => {
+      const raw = (next[q.id] || '').trim();
+      return raw === '' ? 0 : Math.min(100, Math.max(0, Number(raw) || 0));
+    });
+    const avgEssay = Math.round(nums.reduce((a, b) => a + b, 0) / selectedExam.essay.length);
+    handleEssayScoreChange(String(avgEssay));
   };
 
   const handleExportCsv = () => {
@@ -661,6 +694,9 @@ export const CbtGuruTab: React.FC<CbtGuruTabProps> = ({ onNavigateToSoalAI }) =>
                             <th className="py-2.5 px-3">Kelas</th>
                             <th className="py-2.5 px-3">Waktu &amp; Durasi</th>
                             <th className="py-2.5 px-3 text-right">Benar PG</th>
+                            {selectedExam.essay.length > 0 && (
+                              <th className="py-2.5 px-3 text-right">Skor Uraian</th>
+                            )}
                             <th className="py-2.5 px-3 text-right">Skor Akhir</th>
                             <th className="py-2.5 px-3">Status</th>
                             <th className="py-2.5 px-3 text-right print:hidden">Aksi</th>
@@ -700,6 +736,11 @@ export const CbtGuruTab: React.FC<CbtGuruTabProps> = ({ onNavigateToSoalAI }) =>
                                     ? `${attempt.pgCorrect}/${attempt.pgTotal}`
                                     : '-'}
                                 </td>
+                                {selectedExam.essay.length > 0 && (
+                                  <td className="py-2.5 px-3 text-right font-mono tabular-nums text-indigo-700 font-semibold">
+                                    {attempt.essayScore !== undefined ? attempt.essayScore : '-'}
+                                  </td>
+                                )}
                                 <td className="py-2.5 px-3 text-right font-mono tabular-nums font-bold text-sm text-slate-900">
                                   {attempt.finalScore}
                                 </td>
@@ -900,7 +941,16 @@ export const CbtGuruTab: React.FC<CbtGuruTabProps> = ({ onNavigateToSoalAI }) =>
                   ) : (
                     <span className="text-[11px] text-slate-600">
                       {selectedExam.essay.length > 0 && selectedExam.multipleChoice.length > 0
-                        ? 'Rumus saran otomatis: 70% Skor PG + 30% Skor Uraian.'
+                        ? (() => {
+                            const w = resolveEssayWeight(
+                              selectedExam.multipleChoice.length,
+                              selectedExam.essay.length,
+                              selectedExam.essayWeight
+                            );
+                            return `Rumus bobot: ${100 - w}% Skor PG + ${w}% Skor Uraian.`;
+                          })()
+                        : selectedExam.essay.length > 0
+                        ? 'Rumus bobot: 100% Skor Uraian.'
                         : 'Nilai akhir otomatis sinkron ke akun siswa & Ruang Guru.'}
                     </span>
                   )}
@@ -987,8 +1037,24 @@ export const CbtGuruTab: React.FC<CbtGuruTabProps> = ({ onNavigateToSoalAI }) =>
                           key={q.id}
                           className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2 text-xs"
                         >
-                          <div className="font-semibold text-slate-900">
-                            {idx + 1}. {q.question}
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="font-semibold text-slate-900">
+                              {idx + 1}. {q.question}
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <label className="text-[10px] font-semibold text-slate-600">
+                                Skor Butir:
+                              </label>
+                              <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                value={draftPerEssayScores[q.id] ?? ''}
+                                onChange={(e) => handlePerEssayScoreChange(q.id, e.target.value)}
+                                placeholder="0-100"
+                                className="w-16 text-center text-xs font-mono font-bold px-1.5 py-1 border border-slate-300 rounded bg-white"
+                              />
+                            </div>
                           </div>
                           <div className="p-2.5 rounded-lg bg-white border border-slate-200 text-slate-800 whitespace-pre-wrap">
                             <span className="text-[10px] font-bold uppercase text-slate-400 block mb-0.5">

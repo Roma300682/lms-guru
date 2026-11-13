@@ -226,7 +226,7 @@ service cloud.firestore {
         ])
         && data.keys().hasOnly([
           'questionSetId', 'title', 'subject', 'classId', 'durationMinutes', 'showResultToStudent',
-          'isActive', 'createdAtStr', 'multipleChoice', 'essay', 'visibility', 'ownerUid', 'createdAt', 'updatedAt'
+          'essayWeight', 'isActive', 'createdAtStr', 'multipleChoice', 'essay', 'visibility', 'ownerUid', 'createdAt', 'updatedAt'
         ])
         && (!('questionSetId' in data) || (data.questionSetId is string && data.questionSetId.size() <= 128))
         && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
@@ -234,6 +234,7 @@ service cloud.firestore {
         && isValidId(data.classId)
         && data.durationMinutes is int && data.durationMinutes >= 1 && data.durationMinutes <= 240
         && data.showResultToStudent is bool
+        && (!('essayWeight' in data) || (data.essayWeight is int && data.essayWeight >= 0 && data.essayWeight <= 100))
         && data.isActive is bool
         && data.createdAtStr is string && data.createdAtStr.size() <= 30
         && data.multipleChoice is list && data.multipleChoice.size() <= 50
@@ -538,7 +539,7 @@ service cloud.firestore {
         && incoming().updatedAt == request.time
         && diffKeys().hasOnly([
           'title', 'subject', 'classId', 'durationMinutes',
-          'showResultToStudent', 'isActive', 'multipleChoice', 'essay',
+          'showResultToStudent', 'essayWeight', 'isActive', 'multipleChoice', 'essay',
           'visibility', 'updatedAt'
         ]);
       allow delete: if isValidId(examId) && isAdmin();
@@ -560,7 +561,6 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/students/$(incoming().studentId))
         && incoming().studentUid == request.auth.uid
         && incoming().ownerUid == get(/databases/$(database)/documents/cbtExams/$(incoming().examId)).data.ownerUid
-        && !('essayScore' in incoming())
         && !('teacherNote' in incoming())
         && incoming().createdAt == request.time
         && incoming().updatedAt == request.time;

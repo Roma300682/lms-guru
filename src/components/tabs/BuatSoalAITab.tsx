@@ -181,6 +181,7 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({
   const [isCbtOpen, setIsCbtOpen] = useState(false);
   const [cbtClassId, setCbtClassId] = useState<string>(activeClassId || 'all');
   const [cbtDurationMinutes, setCbtDurationMinutes] = useState<number>(45);
+  const [cbtEssayWeight, setCbtEssayWeight] = useState<number>(30);
   const [cbtShowResult, setCbtShowResult] = useState<boolean>(true);
   const [cbtSuccessMsg, setCbtSuccessMsg] = useState('');
 
@@ -518,6 +519,12 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({
 
   const handlePublishToCbt = () => {
     if (!activeSet) return;
+    const resolvedEssayWeight =
+      activeSet.essay.length === 0
+        ? 0
+        : activeSet.multipleChoice.length === 0
+        ? 100
+        : cbtEssayWeight;
     const examId = addCbtExam({
       questionSetId: activeSet.id,
       title: activeSet.title,
@@ -525,6 +532,7 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({
       classId: cbtClassId || 'all',
       durationMinutes: Math.min(240, Math.max(1, Math.trunc(cbtDurationMinutes || 45))),
       showResultToStudent: cbtShowResult,
+      essayWeight: resolvedEssayWeight,
       isActive: true,
       multipleChoice: activeSet.multipleChoice,
       essay: activeSet.essay,
@@ -984,6 +992,27 @@ export const BuatSoalAITab: React.FC<BuatSoalAITabProps> = ({
                         </button>
                       </div>
                     </div>
+                    {activeSet.essay.length > 0 && (
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 border-t border-emerald-200/70">
+                        <span className="text-[11px] font-medium text-emerald-900">
+                          {activeSet.multipleChoice.length === 0
+                            ? 'Komposisi nilai: 100% Soal Uraian (otomatis dinilai terhadap kunci jawaban & dapat disesuaikan guru).'
+                            : 'Bobot Nilai Soal Uraian:'}
+                        </span>
+                        {activeSet.multipleChoice.length > 0 && (
+                          <select
+                            value={cbtEssayWeight}
+                            onChange={(e) => setCbtEssayWeight(Number(e.target.value))}
+                            className="text-xs border border-emerald-300 rounded-lg px-2.5 py-1 bg-white text-emerald-950 font-medium"
+                          >
+                            <option value={20}>20% Uraian · 80% PG</option>
+                            <option value={30}>30% Uraian · 70% PG (Standar)</option>
+                            <option value={40}>40% Uraian · 60% PG</option>
+                            <option value={50}>50% Uraian · 50% PG</option>
+                          </select>
+                        )}
+                      </div>
+                    )}
                     <label className="flex items-center gap-2 text-xs text-emerald-900 cursor-pointer select-none">
                       <input
                         type="checkbox"

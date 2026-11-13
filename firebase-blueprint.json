@@ -535,6 +535,9 @@
         "showResultToStudent": {
           "type": "boolean"
         },
+        "essayWeight": {
+          "type": "integer"
+        },
         "isActive": {
           "type": "boolean"
         },

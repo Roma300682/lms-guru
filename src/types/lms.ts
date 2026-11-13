@@ -121,6 +121,7 @@ export interface CbtExam {
   classId: string; // 'all' atau ID kelas tertentu
   durationMinutes: number;
   showResultToStudent: boolean; // Langsung tunjukkan nilai & pembahasan setelah selesai
+  essayWeight?: number; // Persentase bobot nilai soal uraian (0-100, default 30 jika ada PG & Uraian)
   isActive: boolean;
   createdAt: string;
   multipleChoice: GeneratedPGQuestion[];

@@ -3,6 +3,9 @@
     "api/generate-questions.ts": {
       "maxDuration": 60
     },
+    "api/grade-cbt-essay.ts": {
+      "maxDuration": 30
+    },
     "api/whatsapp/broadcast.ts": {
       "maxDuration": 60
     }

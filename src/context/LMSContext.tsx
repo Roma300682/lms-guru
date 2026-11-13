@@ -1350,6 +1350,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               classId: d.classId || 'all',
               durationMinutes: typeof d.durationMinutes === 'number' ? d.durationMinutes : 30,
               showResultToStudent: Boolean(d.showResultToStudent),
+              essayWeight: typeof d.essayWeight === 'number' ? d.essayWeight : undefined,
               isActive: d.isActive !== false,
               createdAt: d.createdAtStr || '',
               multipleChoice: Array.isArray(d.multipleChoice) ? d.multipleChoice : [],
@@ -2837,6 +2838,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         answerKey: clampStr(q.answerKey || '', 2000),
       }));
 
+    const cleanEssayWeight =
+      sanitizedEssay.length === 0
+        ? 0
+        : sanitizedMC.length === 0
+        ? 100
+        : typeof exam.essayWeight === 'number' && !Number.isNaN(exam.essayWeight)
+        ? Math.min(99, Math.max(1, Math.trunc(exam.essayWeight)))
+        : 30;
+
     const newExam: CbtExam = {
       id: examId,
       questionSetId: clampStr(exam.questionSetId || '', 128),
@@ -2845,6 +2855,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       classId: exam.classId || 'all',
       durationMinutes: cleanDuration,
       showResultToStudent: Boolean(exam.showResultToStudent),
+      essayWeight: cleanEssayWeight,
       isActive: exam.isActive !== false,
       createdAt: todayStr,
       multipleChoice: sanitizedMC,
@@ -2869,6 +2880,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           classId: newExam.classId,
           durationMinutes: newExam.durationMinutes,
           showResultToStudent: newExam.showResultToStudent,
+          essayWeight: cleanEssayWeight,
           isActive: newExam.isActive,
           createdAtStr: clampStr(todayStr, 30),
           multipleChoice: newExam.multipleChoice,
@@ -2961,6 +2973,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const cleanPgTotal = Math.min(50, Math.max(0, Math.trunc(attempt.pgTotal)));
     const cleanPgCorrect = Math.min(cleanPgTotal, Math.max(0, Math.trunc(attempt.pgCorrect)));
     const cleanPgScore = Math.min(100, Math.max(0, Math.round(attempt.pgScore)));
+    const cleanEssayScore =
+      typeof attempt.essayScore === 'number' && !Number.isNaN(attempt.essayScore)
+        ? Math.min(100, Math.max(0, Math.round(attempt.essayScore)))
+        : undefined;
     const cleanFinalScore = Math.min(100, Math.max(0, Math.round(attempt.finalScore)));
     const cleanDurationSpent =
       typeof attempt.durationSpentSec === 'number'
@@ -2981,6 +2997,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       pgCorrect: cleanPgCorrect,
       pgTotal: cleanPgTotal,
       pgScore: cleanPgScore,
+      ...(cleanEssayScore !== undefined ? { essayScore: cleanEssayScore } : {}),
       finalScore: cleanFinalScore,
       submittedAt,
       durationSpentSec: cleanDurationSpent,
@@ -3008,6 +3025,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         pgCorrect: newAttempt.pgCorrect,
         pgTotal: newAttempt.pgTotal,
         pgScore: newAttempt.pgScore,
+        ...(cleanEssayScore !== undefined ? { essayScore: cleanEssayScore } : {}),
         finalScore: newAttempt.finalScore,
         submittedAt: clampStr(newAttempt.submittedAt, 40),
         ...(cleanDurationSpent !== undefined ? { durationSpentSec: cleanDurationSpent } : {}),

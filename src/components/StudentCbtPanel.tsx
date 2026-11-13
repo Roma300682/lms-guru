@@ -13,7 +13,13 @@ import {
   Play,
   Eye,
   StopCircle,
+  Loader2,
 } from 'lucide-react';
+import {
+  computeFinalCbtScore,
+  gradeEssaysLocally,
+  resolveEssayWeight,
+} from '../utils/cbtScoring';
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D'] as const;
 
@@ -49,6 +55,7 @@ export const StudentCbtPanel: React.FC<StudentCbtPanelProps> = ({
   const [remainingSec, setRemainingSec] = useState<number>(0);
   const [confirmSubmitOpen, setConfirmSubmitOpen] = useState<boolean>(false);
   const [confirmStopOpen, setConfirmStopOpen] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [stopNotice, setStopNotice] = useState<string>('');
 
   // Instant Result Review State
@@ -94,42 +101,94 @@ export const StudentCbtPanel: React.FC<StudentCbtPanelProps> = ({
   };
 
   const finalizeSubmit = useRef<(reason?: 'teacher' | 'student' | 'timeout') => void>(() => {});
-  finalizeSubmit.current = (reason?: 'teacher' | 'student' | 'timeout') => {
+  finalizeSubmit.current = async (reason?: 'teacher' | 'student' | 'timeout') => {
     if (!activeExam || !student || hasSubmittedRef.current) return;
     hasSubmittedRef.current = true;
+    setIsSubmitting(true);
 
-    const pgTotal = activeExam.multipleChoice.length;
+    const completedExam = activeExam;
+    const pgTotal = completedExam.multipleChoice.length;
     let pgCorrect = 0;
-    activeExam.multipleChoice.forEach((q) => {
+    completedExam.multipleChoice.forEach((q) => {
       if (pgAnswers[q.id] === q.correctIndex) {
         pgCorrect += 1;
       }
     });
     const pgScore = pgTotal > 0 ? Math.round((pgCorrect / pgTotal) * 100) : 0;
-    const finalScore = pgTotal > 0 ? pgScore : 0;
+
+    let computedEssayScore: number | undefined;
+    if (completedExam.essay.length > 0) {
+      const hasAnyEssayText = completedExam.essay.some((q) =>
+        Boolean((essayAnswers[q.id] || '').trim())
+      );
+      if (!hasAnyEssayText) {
+        computedEssayScore = 0;
+      } else {
+        try {
+          const controller = new AbortController();
+          const timeoutId = window.setTimeout(() => controller.abort(), 8000);
+          const res = await fetch('/api/grade-cbt-essay', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
+            body: JSON.stringify({
+              subject: completedExam.subject || fallbackSubject,
+              items: completedExam.essay.map((q) => ({
+                id: q.id,
+                question: q.question,
+                answerKey: q.answerKey,
+                studentAnswer: essayAnswers[q.id] || '',
+              })),
+            }),
+          });
+          window.clearTimeout(timeoutId);
+          if (res.ok) {
+            const data = (await res.json()) as { essayScore?: unknown };
+            if (typeof data.essayScore === 'number' && !Number.isNaN(data.essayScore)) {
+              computedEssayScore = Math.min(100, Math.max(0, Math.round(data.essayScore)));
+            }
+          }
+        } catch {
+          // Fall back to deterministic rubric scorer below
+        }
+        if (computedEssayScore === undefined) {
+          computedEssayScore = gradeEssaysLocally(completedExam.essay, essayAnswers).essayScore;
+        }
+      }
+    }
+
+    const finalScore = computeFinalCbtScore(
+      pgScore,
+      computedEssayScore,
+      pgTotal,
+      completedExam.essay.length,
+      completedExam.essayWeight
+    );
+
     const durationSpentSec = Math.max(
       1,
       Math.round((Date.now() - startedAtRef.current) / 1000)
     );
 
     const savedAttempt = onSubmitAttempt({
-      examId: activeExam.id,
-      examTitle: activeExam.title,
-      questionSetId: activeExam.questionSetId,
+      examId: completedExam.id,
+      examTitle: completedExam.title,
+      questionSetId: completedExam.questionSetId,
       studentId: student.id,
       studentName: student.name,
       classId: student.classId,
-      subject: activeExam.subject || fallbackSubject,
+      subject: completedExam.subject || fallbackSubject,
       pgAnswers,
       essayAnswers,
       pgCorrect,
       pgTotal,
       pgScore,
+      essayScore: computedEssayScore,
       finalScore,
       durationSpentSec,
     });
 
-    const completedExam = activeExam;
+    setIsSubmitting(false);
     setActiveExam(null);
     setConfirmSubmitOpen(false);
     setConfirmStopOpen(false);
@@ -265,13 +324,16 @@ export const StudentCbtPanel: React.FC<StudentCbtPanelProps> = ({
             <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
+                disabled={isSubmitting}
                 onClick={() => finalizeSubmit.current('student')}
-                className="px-4 py-1.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-xs"
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-60 rounded-lg shadow-xs"
               >
-                Ya, Hentikan &amp; Kumpulkan
+                {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>{isSubmitting ? 'Menilai & Mengumpulkan...' : 'Ya, Hentikan & Kumpulkan'}</span>
               </button>
               <button
                 type="button"
+                disabled={isSubmitting}
                 onClick={() => setConfirmStopOpen(false)}
                 className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg"
               >
@@ -293,19 +355,22 @@ export const StudentCbtPanel: React.FC<StudentCbtPanelProps> = ({
                 <strong className="font-mono tabular-nums">
                   {answeredCount} dari {totalCount}
                 </strong>{' '}
-                butir soal. Setelah dikumpulkan, skor akan langsung ditampilkan.
+                butir soal. Setelah dikumpulkan, skor {activeExam.essay.length > 0 ? '(PG & Uraian) ' : ''}akan langsung ditampilkan.
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
+                disabled={isSubmitting}
                 onClick={() => finalizeSubmit.current()}
-                className="px-4 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-xs"
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 rounded-lg shadow-xs"
               >
-                Ya, Kumpulkan Sekarang
+                {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>{isSubmitting ? 'Menilai & Mengumpulkan...' : 'Ya, Kumpulkan Sekarang'}</span>
               </button>
               <button
                 type="button"
+                disabled={isSubmitting}
                 onClick={() => setConfirmSubmitOpen(false)}
                 className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg"
               >
@@ -483,6 +548,11 @@ export const StudentCbtPanel: React.FC<StudentCbtPanelProps> = ({
       results.find((r) => r.id === attempt.id) || attempt;
     const passed = latestAttempt.finalScore >= kktp;
     const hasEssay = exam.essay.length > 0;
+    const essayWeight = resolveEssayWeight(
+      exam.multipleChoice.length,
+      exam.essay.length,
+      exam.essayWeight
+    );
     const awaitingEssayScore =
       hasEssay && latestAttempt.essayScore === undefined && exam.multipleChoice.length === 0;
 
@@ -527,13 +597,20 @@ export const StudentCbtPanel: React.FC<StudentCbtPanelProps> = ({
                 Siswa: <strong>{latestAttempt.studentName}</strong> · Dikumpulkan pada{' '}
                 <span className="font-mono tabular-nums">{latestAttempt.submittedAt}</span>
               </p>
+              {hasEssay && latestAttempt.essayScore !== undefined && (
+                <p className="text-[11px] text-indigo-700 font-medium">
+                  {exam.multipleChoice.length > 0
+                    ? `Bobot Nilai: ${100 - essayWeight}% PG (${latestAttempt.pgScore}) + ${essayWeight}% Uraian (${latestAttempt.essayScore})`
+                    : `Bobot Nilai: 100% Soal Uraian (${latestAttempt.essayScore})`}
+                </p>
+              )}
             </div>
 
             <div className="flex items-center gap-4 bg-slate-50 border border-slate-200 rounded-xl px-5 py-3 shrink-0">
               <div className="text-right">
                 <div className="text-[11px] font-semibold text-slate-500 uppercase">
                   {hasEssay && latestAttempt.essayScore === undefined && exam.multipleChoice.length > 0
-                    ? 'Skor PG Otomatis'
+                    ? 'Skor PG Sementara'
                     : 'Nilai Akhir CBT'}
                 </div>
                 <div
@@ -585,13 +662,17 @@ export const StudentCbtPanel: React.FC<StudentCbtPanelProps> = ({
               </div>
             </div>
             <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
-              <div className="text-[11px] text-slate-500">Skor Pilihan Ganda</div>
+              <div className="text-[11px] text-slate-500">
+                Skor PG {hasEssay && exam.multipleChoice.length > 0 ? `(${100 - essayWeight}%)` : ''}
+              </div>
               <div className="text-base font-bold text-slate-900 font-mono tabular-nums mt-0.5">
                 {latestAttempt.pgTotal > 0 ? latestAttempt.pgScore : '-'}
               </div>
             </div>
             <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
-              <div className="text-[11px] text-slate-500">Skor Uraian</div>
+              <div className="text-[11px] text-slate-500">
+                Skor Uraian {hasEssay ? `(${essayWeight}%)` : ''}
+              </div>
               <div className="text-base font-bold text-slate-900 font-mono tabular-nums mt-0.5">
                 {hasEssay
                   ? latestAttempt.essayScore !== undefined
