@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useLMS } from '../context/LMSContext';
-import { GraduationCap, User, Lock, ArrowRight, Check, AlertCircle, Cloud } from 'lucide-react';
+import { GraduationCap, User, Lock, ArrowRight, Check, AlertCircle, Cloud, MessageCircle } from 'lucide-react';
 import { DeployGuideModal } from './modals/DeployGuideModal';
 import { ForgotPasswordModal } from './modals/ForgotPasswordModal';
+import { normalizeWhatsAppNumber } from '../utils/whatsapp';
 
 export const LoginPage: React.FC = () => {
   const { teacher, classes, students, loginAsTeacher, loginAsStudent } = useLMS();
@@ -18,6 +19,11 @@ export const LoginPage: React.FC = () => {
   // Student login state
   const [selectedClassId, setSelectedClassId] = useState<string>(classes[0]?.id || '');
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
+  const [studentWhatsapp, setStudentWhatsapp] = useState<string>(() => {
+    const first = students.find((s) => s.classId === (classes[0]?.id || ''));
+    return first?.whatsapp || '';
+  });
+  const [studentWaError, setStudentWaError] = useState('');
 
   const effectiveClassId = classes.some((c) => c.id === selectedClassId)
     ? selectedClassId
@@ -25,11 +31,19 @@ export const LoginPage: React.FC = () => {
 
   const classStudents = students.filter((s) => s.classId === effectiveClassId);
 
+  const syncStudentWhatsapp = (studentId: string) => {
+    const found = students.find((s) => s.id === studentId);
+    setStudentWhatsapp(found?.whatsapp || '');
+    setStudentWaError('');
+  };
+
   // Set default student when class changes
   const handleClassChange = (newClassId: string) => {
     setSelectedClassId(newClassId);
     const firstStudentInClass = students.find((s) => s.classId === newClassId);
-    setSelectedStudentId(firstStudentInClass?.id || '');
+    const nextId = firstStudentInClass?.id || '';
+    setSelectedStudentId(nextId);
+    syncStudentWhatsapp(nextId);
   };
 
   const handleTeacherSubmit = (e: React.FormEvent) => {
@@ -43,9 +57,17 @@ export const LoginPage: React.FC = () => {
 
   const handleStudentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setStudentWaError('');
     const studentToLogin = selectedStudentId || classStudents[0]?.id;
     if (!studentToLogin) return;
-    loginAsStudent(studentToLogin);
+
+    const trimmedWa = studentWhatsapp.trim();
+    if (trimmedWa && !normalizeWhatsAppNumber(trimmedWa)) {
+      setStudentWaError('Format nomor WhatsApp tidak valid. Contoh: 081234567890');
+      return;
+    }
+
+    loginAsStudent(studentToLogin, trimmedWa || undefined);
   };
 
   return (
@@ -87,8 +109,12 @@ export const LoginPage: React.FC = () => {
             type="button"
             onClick={() => {
               setRole('student');
+              const activeStudentId = selectedStudentId || classStudents[0]?.id || '';
               if (!selectedStudentId && classStudents[0]) {
                 setSelectedStudentId(classStudents[0].id);
+              }
+              if (activeStudentId) {
+                syncStudentWhatsapp(activeStudentId);
               }
             }}
             className={`flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold rounded-xl transition-all ${
@@ -192,21 +218,55 @@ export const LoginPage: React.FC = () => {
                   Belum ada siswa terdaftar di {classes.find((c) => c.id === effectiveClassId)?.name || 'kelas ini'}. Guru dapat mengunggah daftar siswa melalui Panel Guru & Admin.
                 </div>
               ) : (
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">
-                    Pilih Nama Siswa ({classStudents.length} siswa terdaftar)
-                  </label>
-                  <select
-                    value={selectedStudentId || classStudents[0]?.id || ''}
-                    onChange={(e) => setSelectedStudentId(e.target.value)}
-                    className="w-full text-xs font-medium px-3 py-2.5 border border-slate-300 rounded-xl bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-                  >
-                    {classStudents.map((s, idx) => (
-                      <option key={s.id} value={s.id}>
-                        {idx + 1}. {s.name}
-                      </option>
-                    ))}
-                  </select>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      Pilih Nama Siswa ({classStudents.length} siswa terdaftar)
+                    </label>
+                    <select
+                      value={selectedStudentId || classStudents[0]?.id || ''}
+                      onChange={(e) => {
+                        setSelectedStudentId(e.target.value);
+                        syncStudentWhatsapp(e.target.value);
+                      }}
+                      className="w-full text-xs font-medium px-3 py-2.5 border border-slate-300 rounded-xl bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                    >
+                      {classStudents.map((s, idx) => (
+                        <option key={s.id} value={s.id}>
+                          {idx + 1}. {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      No. WhatsApp Siswa / Orang Tua
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="tel"
+                        value={studentWhatsapp}
+                        onChange={(e) => {
+                          setStudentWhatsapp(e.target.value);
+                          setStudentWaError('');
+                        }}
+                        placeholder="Contoh: 081234567890"
+                        className="w-full text-xs px-3.5 py-2.5 pl-9 border border-slate-300 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-emerald-500 font-mono"
+                      />
+                      <MessageCircle className="w-4 h-4 text-emerald-600 absolute left-3 top-2.5" />
+                    </div>
+                    {studentWaError ? (
+                      <p className="text-[11px] text-rose-600 mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        <span>{studentWaError}</span>
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Tersimpan otomatis untuk menerima info materi &amp; tugas dari guru lewat WhatsApp.
+                      </p>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -224,7 +284,7 @@ export const LoginPage: React.FC = () => {
               </button>
 
               <p className="text-[11px] text-slate-400 text-center pt-1">
-                Siswa tidak perlu password rumit. Cukup pilih nama untuk mengerjakan tugas & cek nilai.
+                Siswa tidak perlu password rumit. Cukup pilih nama dan isi nomor WhatsApp untuk mulai belajar.
               </p>
             </form>
           )}

@@ -1,15 +1,19 @@
 import React, { useState } from 'react';
 import { useLMS } from '../../context/LMSContext';
-import { Users, Upload, Plus, Trash2, Search, Check, AlertCircle, UserCheck } from 'lucide-react';
+import { Users, Upload, Plus, Trash2, Search, Check, UserCheck, MessageCircle, Edit2 } from 'lucide-react';
 import { UploadStudentsModal } from '../modals/UploadStudentsModal';
+import { buildWaMeUrl, normalizeWhatsAppNumber } from '../../utils/whatsapp';
 
 export const SiswaTab: React.FC = () => {
-  const { students, classes, activeClassId, setActiveClassId, addStudent, deleteStudent } = useLMS();
+  const { students, classes, activeClassId, setActiveClassId, addStudent, updateStudent, deleteStudent } = useLMS();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isAddingSingle, setIsAddingSingle] = useState(false);
   const [newStudentName, setNewStudentName] = useState('');
+  const [newStudentWa, setNewStudentWa] = useState('');
+  const [editingWaId, setEditingWaId] = useState<string | null>(null);
+  const [editingWaValue, setEditingWaValue] = useState('');
   const [targetClassForSingle, setTargetClassForSingle] = useState(
     activeClassId !== 'all' ? activeClassId : classes[0]?.id || ''
   );
@@ -31,12 +35,19 @@ export const SiswaTab: React.FC = () => {
   const handleAddSingleStudent = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newStudentName.trim() || !targetClassForSingle) return;
-    addStudent(newStudentName.trim(), targetClassForSingle);
+    addStudent(newStudentName.trim(), targetClassForSingle, newStudentWa.trim() || undefined);
     setNewStudentName('');
+    setNewStudentWa('');
     setIsAddingSingle(false);
     if (activeClassId !== 'all' && activeClassId !== targetClassForSingle) {
       setActiveClassId(targetClassForSingle);
     }
+  };
+
+  const handleSaveStudentWa = (studentId: string) => {
+    updateStudent(studentId, { whatsapp: editingWaValue.trim() || undefined });
+    setEditingWaId(null);
+    setEditingWaValue('');
   };
 
   const handleImportSuccess = (count: number, className: string) => {
@@ -140,6 +151,13 @@ export const SiswaTab: React.FC = () => {
             className="flex-1 min-w-[160px] px-3 py-1.5 border border-slate-300 rounded-lg bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-xs"
             autoFocus
           />
+          <input
+            type="text"
+            placeholder="No. WhatsApp (cth: 0812...)"
+            value={newStudentWa}
+            onChange={(e) => setNewStudentWa(e.target.value)}
+            className="w-44 px-3 py-1.5 border border-slate-300 rounded-lg bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-xs"
+          />
           <button
             type="submit"
             className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-xs transition-colors"
@@ -194,6 +212,7 @@ export const SiswaTab: React.FC = () => {
                   <th className="py-3 px-3 w-12 text-center">No</th>
                   <th className="py-3 px-4">Nama Lengkap Siswa</th>
                   <th className="py-3 px-4 w-36">Rombel Kelas</th>
+                  <th className="py-3 px-4 w-48">No. WhatsApp</th>
                   <th className="py-3 px-4 w-28 text-center">Akses Login</th>
                   <th className="py-3 px-4 w-16 text-center">Aksi</th>
                 </tr>
@@ -201,6 +220,8 @@ export const SiswaTab: React.FC = () => {
               <tbody className="divide-y divide-slate-100">
                 {displayedStudents.map((student, idx) => {
                   const studentClass = classes.find((c) => c.id === student.classId);
+                  const validWa = normalizeWhatsAppNumber(student.whatsapp);
+                  const isEditingThisWa = editingWaId === student.id;
                   return (
                     <tr key={student.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="py-2.5 px-3 text-center text-slate-400 font-mono">
@@ -213,6 +234,64 @@ export const SiswaTab: React.FC = () => {
                         <span className="inline-block px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
                           {studentClass ? studentClass.name : 'Kelas Tidak Diketahui'}
                         </span>
+                      </td>
+                      <td className="py-2.5 px-4">
+                        {isEditingThisWa ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="text"
+                              value={editingWaValue}
+                              onChange={(e) => setEditingWaValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleSaveStudentWa(student.id);
+                                } else if (e.key === 'Escape') {
+                                  setEditingWaId(null);
+                                }
+                              }}
+                              placeholder="0812..."
+                              className="w-28 px-2 py-1 text-xs border border-indigo-300 rounded focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                              autoFocus
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleSaveStudentWa(student.id)}
+                              className="p-1 text-emerald-700 hover:bg-emerald-50 rounded"
+                              title="Simpan Nomor WA"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            {validWa ? (
+                              <a
+                                href={buildWaMeUrl(student.whatsapp, `Halo ${student.name},`)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-[11px] font-mono font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded border border-emerald-200 transition-colors"
+                                title="Buka chat WhatsApp"
+                              >
+                                <MessageCircle className="w-3 h-3" />
+                                <span>{student.whatsapp}</span>
+                              </a>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 italic">Belum diisi</span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingWaId(student.id);
+                                setEditingWaValue(student.whatsapp || '');
+                              }}
+                              className="p-1 text-slate-400 hover:text-indigo-600 rounded hover:bg-indigo-50 transition-colors"
+                              title="Ubah Nomor WhatsApp"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
                       </td>
                       <td className="py-2.5 px-4 text-center">
                         <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">

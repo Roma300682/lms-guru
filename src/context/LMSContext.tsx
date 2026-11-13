@@ -40,7 +40,7 @@ interface LMSContextType {
 
   authSession: AuthSession | null;
   loginAsTeacher: (pin: string) => boolean;
-  loginAsStudent: (studentId: string) => void;
+  loginAsStudent: (studentId: string, whatsapp?: string) => void;
   logout: () => void;
   resetTeacherPin: (newPin: string) => void;
 
@@ -52,10 +52,12 @@ interface LMSContextType {
 
   // Class & Student Actions
   addClass: (name: string) => void;
+  updateClass: (id: string, patch: Partial<Pick<ClassRoom, 'name' | 'whatsappGroupUrl'>>) => void;
   deleteClass: (id: string) => void;
   deleteAllClasses: () => void;
-  addStudent: (name: string, classId: string) => void;
-  addStudentsBatch: (newStudents: { name: string; classId: string }[]) => void;
+  addStudent: (name: string, classId: string, whatsapp?: string) => void;
+  updateStudent: (id: string, patch: Partial<Pick<Student, 'name' | 'classId' | 'whatsapp'>>) => void;
+  addStudentsBatch: (newStudents: { name: string; classId: string; whatsapp?: string }[]) => void;
   deleteStudent: (id: string) => void;
 
   // Admin Backup & Restore
@@ -144,7 +146,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return false;
   };
 
-  const loginAsStudent = (studentId: string) => {
+  const loginAsStudent = (studentId: string, whatsapp?: string) => {
+    const cleanWa = whatsapp?.trim();
+    if (cleanWa) {
+      setStudents((prev) =>
+        prev.map((s) => (s.id === studentId ? { ...s, whatsapp: cleanWa } : s))
+      );
+    }
     setAuthSession({ role: 'student', studentId });
     setCurrentStudentId(studentId);
     setViewMode('student');
@@ -311,6 +319,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setClasses((prev) => [...prev, newClass]);
   };
 
+  const updateClass = (id: string, patch: Partial<Pick<ClassRoom, 'name' | 'whatsappGroupUrl'>>) => {
+    setClasses((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, ...patch } : c))
+    );
+  };
+
   const deleteClass = (id: string) => {
     setClasses((prev) => prev.filter((c) => c.id !== id));
     setStudents((prev) => prev.filter((s) => s.classId !== id));
@@ -329,14 +343,21 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setActiveClassId('all');
   };
 
-  const addStudent = (name: string, classId: string) => {
+  const addStudent = (name: string, classId: string, whatsapp?: string) => {
     if (!name.trim()) return;
     const newStudent: Student = {
       id: 's_' + Date.now(),
       name: name.trim(),
       classId,
+      whatsapp: whatsapp?.trim() || undefined,
     };
     setStudents((prev) => [...prev, newStudent]);
+  };
+
+  const updateStudent = (id: string, patch: Partial<Pick<Student, 'name' | 'classId' | 'whatsapp'>>) => {
+    setStudents((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, ...patch } : s))
+    );
   };
 
   const deleteStudent = (id: string) => {
@@ -344,7 +365,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSubmissions((prev) => prev.filter((sub) => sub.studentId !== id));
   };
 
-  const addStudentsBatch = (newStudents: { name: string; classId: string }[]) => {
+  const addStudentsBatch = (newStudents: { name: string; classId: string; whatsapp?: string }[]) => {
     const validClassIds = new Set(classes.map((c) => c.id));
     const fallbackClassId = classes[0]?.id || 'c1';
 
@@ -356,6 +377,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           id: 's_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).substring(2, 7),
           name: s.name.trim(),
           classId: assignedClassId,
+          whatsapp: s.whatsapp?.trim() || undefined,
         };
       });
     if (toAdd.length === 0) return;
@@ -536,9 +558,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCurrentStudentId,
         updateTeacher,
         addClass,
+        updateClass,
         deleteClass,
         deleteAllClasses,
         addStudent,
+        updateStudent,
         addStudentsBatch,
         deleteStudent,
         exportBackup,

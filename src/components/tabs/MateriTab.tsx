@@ -2,10 +2,15 @@ import React, { useState } from 'react';
 import { useLMS } from '../../context/LMSContext';
 import { AddMaterialModal } from '../modals/AddMaterialModal';
 import { FileAttachmentBadge } from '../FileAttachmentBadge';
-import { Plus, BookOpen, ExternalLink, Trash2, Search, Filter } from 'lucide-react';
+import { WhatsAppPrefill } from '../../types/lms';
+import { Plus, BookOpen, ExternalLink, Trash2, Search, MessageCircle } from 'lucide-react';
 
-export const MateriTab: React.FC = () => {
-  const { materials, deleteMaterial, activeClassId, setActiveClassId, classes } = useLMS();
+interface MateriTabProps {
+  onShareToWhatsApp?: (prefill: WhatsAppPrefill) => void;
+}
+
+export const MateriTab: React.FC<MateriTabProps> = ({ onShareToWhatsApp }) => {
+  const { materials, deleteMaterial, activeClassId, setActiveClassId, classes, teacher } = useLMS();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -139,17 +144,37 @@ export const MateriTab: React.FC = () => {
                   </div>
                   <h3 className="text-base font-semibold text-slate-900">{mat.title}</h3>
                 </div>
-                <button
-                  onClick={() => {
-                    if (confirm(`Hapus bahan ajar "${mat.title}"?`)) {
-                      deleteMaterial(mat.id);
-                    }
-                  }}
-                  className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
-                  title="Hapus Bahan Ajar"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-1">
+                  {onShareToWhatsApp && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onShareToWhatsApp({
+                          classId: mat.classId,
+                          message: `Halo {nama} ({kelas}),\n\nMateri baru mata pelajaran *${teacher.subject}* telah dibagikan:\n*${mat.title}*\n\n${mat.content}${
+                            mat.linkUrl ? `\n\nTautan referensi: ${mat.linkUrl}` : ''
+                          }\n\nSilakan cek di GuruMapel LMS. Terima kasih,\n${teacher.name}`,
+                        })
+                      }
+                      className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-md transition-colors"
+                      title="Kirim info materi ini ke WhatsApp siswa / grup"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" />
+                      <span>Kirim WA</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      if (confirm(`Hapus bahan ajar "${mat.title}"?`)) {
+                        deleteMaterial(mat.id);
+                      }
+                    }}
+                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
+                    title="Hapus Bahan Ajar"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               {mat.content && (

@@ -4,11 +4,13 @@ export interface Student {
   id: string;
   name: string;
   classId: string;
+  whatsapp?: string; // Nomor WhatsApp siswa / orang tua (cth: 081234567890)
 }
 
 export interface ClassRoom {
   id: string;
   name: string; // misal: "Kelas X-1"
+  whatsappGroupUrl?: string; // Link undangan Grup WhatsApp kelas (opsional)
 }
 
 export type MaterialFileType = 'pdf' | 'word' | 'excel' | 'other';
@@ -74,3 +76,37 @@ export interface AuthSession {
   role: 'teacher' | 'student';
   studentId?: string;
 }
+
+export interface GeneratedPGQuestion {
+  id: string;
+  question: string;
+  options: string[]; // 4 opsi (A-D)
+  correctIndex: number; // 0..3
+  explanation?: string;
+}
+
+export interface GeneratedEssayQuestion {
+  id: string;
+  question: string;
+  answerKey: string;
+}
+
+export interface GeneratedQuestionSet {
+  id: string;
+  title: string;
+  subject: string;
+  sourceMaterial: string;
+  createdAt: string;
+  pgCount: number;
+  essayCount: number;
+  multipleChoice: GeneratedPGQuestion[];
+  essay: GeneratedEssayQuestion[];
+}
+
+export interface WhatsAppPrefill {
+  message: string;
+  classId?: string;
+  onlyUnsubmittedTaskId?: string;
+}
+
+

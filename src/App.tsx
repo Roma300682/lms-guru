@@ -14,7 +14,7 @@ import { LoginPage } from './components/LoginPage';
 
 const MainContent: React.FC = () => {
   const { viewMode, authSession } = useLMS();
-  const [activeTab, setActiveTab] = useState<'materi' | 'tugas' | 'siswa' | 'rekap'>('materi');
+  const [activeTab, setActiveTab] = useState<'materi' | 'tugas' | 'soal-ai' | 'whatsapp' | 'siswa' | 'rekap'>('materi');
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isDeployModalOpen, setIsDeployModalOpen] = useState(false);
 

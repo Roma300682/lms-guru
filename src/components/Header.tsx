@@ -1,10 +1,10 @@
 import React from 'react';
 import { useLMS } from '../context/LMSContext';
-import { GraduationCap, UserCheck, BookOpen, LogOut, RotateCcw, Cloud, ShieldCheck } from 'lucide-react';
+import { GraduationCap, UserCheck, BookOpen, LogOut, RotateCcw, Cloud, ShieldCheck, Sparkles, MessageCircle } from 'lucide-react';
 
 interface HeaderProps {
-  activeTab: 'materi' | 'tugas' | 'siswa' | 'rekap';
-  setActiveTab: (tab: 'materi' | 'tugas' | 'siswa' | 'rekap') => void;
+  activeTab: 'materi' | 'tugas' | 'soal-ai' | 'whatsapp' | 'siswa' | 'rekap';
+  setActiveTab: (tab: 'materi' | 'tugas' | 'soal-ai' | 'whatsapp' | 'siswa' | 'rekap') => void;
   onOpenProfile: () => void;
   onOpenDeployGuide?: () => void;
 }
@@ -34,7 +34,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
 
         {/* Zone 2: Navigation Links (Teacher Mode only) */}
         {viewMode === 'teacher' ? (
-          <nav className="flex items-center gap-1 sm:gap-2">
+          <nav className="flex items-center gap-1 sm:gap-2 overflow-x-auto">
             <button
               onClick={() => setActiveTab('materi')}
               className={`px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 ${
@@ -54,6 +54,28 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
               }`}
             >
               Tugas & Nilai
+            </button>
+            <button
+              onClick={() => setActiveTab('soal-ai')}
+              className={`inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 ${
+                activeTab === 'soal-ai'
+                  ? 'bg-indigo-50 text-indigo-700 font-semibold border border-indigo-200'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Buat Soal AI</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('whatsapp')}
+              className={`inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 ${
+                activeTab === 'whatsapp'
+                  ? 'bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+              <span>WhatsApp</span>
             </button>
             <button
               onClick={() => setActiveTab('siswa')}

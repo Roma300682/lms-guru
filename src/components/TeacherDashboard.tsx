@@ -2,15 +2,18 @@ import React, { useState } from 'react';
 import { useLMS } from '../context/LMSContext';
 import { MateriTab } from './tabs/MateriTab';
 import { TugasTab } from './tabs/TugasTab';
+import { BuatSoalAITab } from './tabs/BuatSoalAITab';
+import { WhatsAppTab } from './tabs/WhatsAppTab';
 import { SiswaTab } from './tabs/SiswaTab';
 import { RekapTab } from './tabs/RekapTab';
-import { Users, Settings, BookOpen, Upload, Shield } from 'lucide-react';
+import { WhatsAppPrefill } from '../types/lms';
+import { Users, Settings, BookOpen, Upload } from 'lucide-react';
 import { UploadStudentsModal } from './modals/UploadStudentsModal';
 
 interface TeacherDashboardProps {
-  activeTab: 'materi' | 'tugas' | 'siswa' | 'rekap';
+  activeTab: 'materi' | 'tugas' | 'soal-ai' | 'whatsapp' | 'siswa' | 'rekap';
   onOpenProfile: () => void;
-  onNavigateTab?: (tab: 'materi' | 'tugas' | 'siswa' | 'rekap') => void;
+  onNavigateTab?: (tab: 'materi' | 'tugas' | 'soal-ai' | 'whatsapp' | 'siswa' | 'rekap') => void;
 }
 
 export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
@@ -20,6 +23,14 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 }) => {
   const { teacher, classes, students, activeClassId, setActiveClassId } = useLMS();
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [waPrefill, setWaPrefill] = useState<WhatsAppPrefill | null>(null);
+
+  const handleShareToWhatsApp = (prefill: WhatsAppPrefill) => {
+    setWaPrefill(prefill);
+    if (onNavigateTab) {
+      onNavigateTab('whatsapp');
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -112,8 +123,23 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
       {/* Main Tab Content */}
       <main>
-        {activeTab === 'materi' && <MateriTab />}
-        {activeTab === 'tugas' && <TugasTab />}
+        {activeTab === 'materi' && (
+          <MateriTab onShareToWhatsApp={handleShareToWhatsApp} />
+        )}
+        {activeTab === 'tugas' && (
+          <TugasTab onShareToWhatsApp={handleShareToWhatsApp} />
+        )}
+        {activeTab === 'soal-ai' && (
+          <BuatSoalAITab
+            onNavigateToTasks={onNavigateTab ? () => onNavigateTab('tugas') : undefined}
+          />
+        )}
+        {activeTab === 'whatsapp' && (
+          <WhatsAppTab
+            prefill={waPrefill}
+            onClearPrefill={() => setWaPrefill(null)}
+          />
+        )}
         {activeTab === 'siswa' && <SiswaTab />}
         {activeTab === 'rekap' && <RekapTab />}
       </main>

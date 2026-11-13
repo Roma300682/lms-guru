@@ -3,11 +3,15 @@ import { useLMS } from '../../context/LMSContext';
 import { AddTaskModal } from '../modals/AddTaskModal';
 import { GradeModal } from '../modals/GradeModal';
 import { FileAttachmentBadge } from '../FileAttachmentBadge';
-import { Submission } from '../../types/lms';
-import { Plus, ClipboardList, ChevronDown, ChevronUp, CheckCircle, Clock, Trash2, Edit3 } from 'lucide-react';
+import { Submission, WhatsAppPrefill } from '../../types/lms';
+import { Plus, ClipboardList, ChevronDown, ChevronUp, CheckCircle, Clock, Trash2, Edit3, MessageCircle, Bell } from 'lucide-react';
 
-export const TugasTab: React.FC = () => {
-  const { tasks, deleteTask, submissions, activeClassId, classes, students } = useLMS();
+interface TugasTabProps {
+  onShareToWhatsApp?: (prefill: WhatsAppPrefill) => void;
+}
+
+export const TugasTab: React.FC<TugasTabProps> = ({ onShareToWhatsApp }) => {
+  const { tasks, deleteTask, submissions, activeClassId, classes, students, teacher } = useLMS();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
@@ -89,7 +93,40 @@ export const TugasTab: React.FC = () => {
                       <h3 className="text-base font-semibold text-slate-900">{task.title}</h3>
                     </div>
 
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                      {onShareToWhatsApp && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onShareToWhatsApp({
+                                classId: task.classId,
+                                message: `Halo {nama} ({kelas}),\n\nAda tugas baru mata pelajaran *${teacher.subject}*:\n*${task.title}*\nTenggat: *${task.dueDate}*\n\n${task.instructions}\n\nSilakan kerjakan dan kumpulkan di GuruMapel LMS.\nSalam,\n${teacher.name}`,
+                              })
+                            }
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-md transition-colors"
+                            title="Bagikan info tugas ke WhatsApp"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" />
+                            <span>Info WA</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onShareToWhatsApp({
+                                classId: task.classId,
+                                onlyUnsubmittedTaskId: task.id,
+                                message: `Halo {nama} ({kelas}),\n\nPengingat tugas *${teacher.subject}*:\n*${task.title}*\nBatas pengumpulan: *${task.dueDate}*\n\nTercatat Anda belum mengumpulkan tugas ini di GuruMapel LMS. Mohon segera dikumpulkan ya.\nTerima kasih,\n${teacher.name}`,
+                              })
+                            }
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-md transition-colors"
+                            title="Ingatkan via WhatsApp siswa yang belum mengumpulkan"
+                          >
+                            <Bell className="w-3.5 h-3.5" />
+                            <span>Ingatkan WA</span>
+                          </button>
+                        </>
+                      )}
                       <button
                         onClick={() => {
                           if (confirm('Hapus tugas ini beserta seluruh pengumpulan siswa?')) {
